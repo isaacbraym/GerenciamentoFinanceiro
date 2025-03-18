@@ -17,7 +17,7 @@ import java.util.List;
  */
 public class ParcelamentoDAO {
     
-    // Consultas SQL comuns
+    // Consultas SQL
     private static final String SQL_INSERT_PARCELAMENTO = 
         "INSERT INTO parcelamentos (valor_total, total_parcelas, parcelas_restantes, data_inicio) VALUES (?, ?, ?, ?)";
     
@@ -41,6 +41,27 @@ public class ParcelamentoDAO {
     
     private static final String SQL_FIND_PARCELAS_BY_PARCELAMENTO = 
         "SELECT * FROM parcelas WHERE parcelamento_id = ? ORDER BY numero_parcela";
+    
+    private static final String SQL_FIND_ACTIVE = 
+        "SELECT * FROM parcelamentos WHERE parcelas_restantes > 0 ORDER BY data_inicio DESC";
+    
+    private static final String SQL_UPDATE_PARCELA_STATUS = 
+        "UPDATE parcelas SET paga = ? WHERE id = ?";
+    
+    private static final String SQL_FIND_PARCELAS_NEXT_MONTH = 
+        "SELECT p.*, par.id as parcelamento_id FROM parcelas p " +
+        "JOIN parcelamentos par ON p.parcelamento_id = par.id " +
+        "WHERE p.paga = 0 AND p.data_vencimento BETWEEN ? AND ? " +
+        "ORDER BY p.data_vencimento";
+    
+    private static final String SQL_GET_PARCELAMENTO_ID_FROM_PARCELA = 
+        "SELECT parcelamento_id FROM parcelas WHERE id = ?";
+    
+    private static final String SQL_COUNT_UNPAID_PARCELAS = 
+        "SELECT COUNT(*) as restantes FROM parcelas WHERE parcelamento_id = ? AND paga = 0";
+    
+    private static final String SQL_UPDATE_PARCELAS_RESTANTES = 
+        "UPDATE parcelamentos SET parcelas_restantes = ? WHERE id = ?";
     
     /**
      * Insere um novo parcelamento no banco de dados.
@@ -90,25 +111,11 @@ public class ParcelamentoDAO {
             conn.commit();
             return parcelamentoId;
         } catch (SQLException e) {
-            if (conn != null && originalAutoCommit) {
-                try {
-                    conn.rollback();
-                } catch (SQLException ex) {
-                    ex.printStackTrace();
-                }
-            }
+            realizarRollback(conn);
             throw new SQLException("Erro ao inserir parcelamento: " + e.getMessage(), e);
         } finally {
-            if (generatedKeys != null) try { generatedKeys.close(); } catch (SQLException e) { e.printStackTrace(); }
-            if (stmt != null) try { stmt.close(); } catch (SQLException e) { e.printStackTrace(); }
-            
-            if (conn != null && originalAutoCommit) {
-                try {
-                    conn.setAutoCommit(true);
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                }
-            }
+            fecharRecursos(generatedKeys, stmt);
+            restaurarAutoCommit(conn, originalAutoCommit);
         }
     }
     
@@ -209,10 +216,7 @@ public class ParcelamentoDAO {
             }
             
             // Excluir parcelas antigas
-            try (PreparedStatement stmtDelete = conn.prepareStatement(SQL_DELETE_PARCELAS)) {
-                stmtDelete.setInt(1, parcelamento.getId());
-                stmtDelete.executeUpdate();
-            }
+            excluirParcelas(conn, parcelamento.getId());
             
             // Inserir novas parcelas
             for (Parcela parcela : parcelamento.getParcelas()) {
@@ -221,24 +225,24 @@ public class ParcelamentoDAO {
             
             conn.commit();
         } catch (SQLException e) {
-            if (conn != null && originalAutoCommit) {
-                try {
-                    conn.rollback();
-                } catch (SQLException ex) {
-                    ex.printStackTrace();
-                }
-            }
+            realizarRollback(conn);
             throw new SQLException("Erro ao atualizar parcelamento: " + e.getMessage(), e);
         } finally {
-            if (stmt != null) try { stmt.close(); } catch (SQLException e) { e.printStackTrace(); }
-            
-            if (conn != null && originalAutoCommit) {
-                try {
-                    conn.setAutoCommit(true);
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                }
-            }
+            fecharRecursos(null, stmt);
+            restaurarAutoCommit(conn, originalAutoCommit);
+        }
+    }
+    
+    /**
+     * Exclui as parcelas de um parcelamento.
+     * @param conn a conexão com o banco de dados
+     * @param parcelamentoId o ID do parcelamento
+     * @throws SQLException se ocorrer um erro de SQL
+     */
+    private void excluirParcelas(Connection conn, int parcelamentoId) throws SQLException {
+        try (PreparedStatement stmt = conn.prepareStatement(SQL_DELETE_PARCELAS)) {
+            stmt.setInt(1, parcelamentoId);
+            stmt.executeUpdate();
         }
     }
     
@@ -257,10 +261,7 @@ public class ParcelamentoDAO {
             conn.setAutoCommit(false);
             
             // Excluir parcelas
-            try (PreparedStatement stmt = conn.prepareStatement(SQL_DELETE_PARCELAS)) {
-                stmt.setInt(1, id);
-                stmt.executeUpdate();
-            }
+            excluirParcelas(conn, id);
             
             // Excluir parcelamento
             try (PreparedStatement stmt = conn.prepareStatement(SQL_DELETE_PARCELAMENTO)) {
@@ -270,22 +271,10 @@ public class ParcelamentoDAO {
             
             conn.commit();
         } catch (SQLException e) {
-            if (conn != null && originalAutoCommit) {
-                try {
-                    conn.rollback();
-                } catch (SQLException ex) {
-                    ex.printStackTrace();
-                }
-            }
+            realizarRollback(conn);
             throw new SQLException("Erro ao excluir parcelamento: " + e.getMessage(), e);
         } finally {
-            if (conn != null && originalAutoCommit) {
-                try {
-                    conn.setAutoCommit(true);
-                } catch (SQLException e) {
-                    e.printStackTrace();
-                }
-            }
+            restaurarAutoCommit(conn, originalAutoCommit);
         }
     }
     
@@ -342,11 +331,10 @@ public class ParcelamentoDAO {
      */
     public List<Parcelamento> listarParcelamentosAtivos() throws SQLException {
         List<Parcelamento> parcelamentos = new ArrayList<>();
-        String sql = "SELECT * FROM parcelamentos WHERE parcelas_restantes > 0 ORDER BY data_inicio DESC";
         
         try (Connection conn = ConexaoBanco.getConexao();
              Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+             ResultSet rs = stmt.executeQuery(SQL_FIND_ACTIVE)) {
             
             while (rs.next()) {
                 Parcelamento parcelamento = construirParcelamento(rs);
@@ -374,19 +362,36 @@ public class ParcelamentoDAO {
             
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    Parcela parcela = new Parcela();
-                    parcela.setId(rs.getInt("id"));
-                    parcela.setNumeroParcela(rs.getInt("numero_parcela"));
-                    parcela.setValor(rs.getDouble("valor"));
-                    parcela.setDataVencimento(LocalDate.parse(rs.getString("data_vencimento")));
-                    parcela.setPaga(rs.getBoolean("paga"));
-                    
+                    Parcela parcela = construirParcela(rs);
+                    parcela.setParcelamentoId(parcelamentoId);
                     parcelas.add(parcela);
                 }
             }
         }
         
         return parcelas;
+    }
+    
+    /**
+     * Constrói um objeto Parcela a partir de um ResultSet.
+     * @param rs o ResultSet contendo os dados da parcela
+     * @return a parcela construída
+     * @throws SQLException se ocorrer um erro de SQL
+     */
+    private Parcela construirParcela(ResultSet rs) throws SQLException {
+        Parcela parcela = new Parcela();
+        parcela.setId(rs.getInt("id"));
+        parcela.setNumeroParcela(rs.getInt("numero_parcela"));
+        parcela.setValor(rs.getDouble("valor"));
+        
+        String dataVencimentoStr = rs.getString("data_vencimento");
+        if (dataVencimentoStr != null && !dataVencimentoStr.isEmpty()) {
+            parcela.setDataVencimento(LocalDate.parse(dataVencimentoStr));
+        }
+        
+        parcela.setPaga(rs.getBoolean("paga"));
+        
+        return parcela;
     }
     
     /**
@@ -402,7 +407,13 @@ public class ParcelamentoDAO {
         parcelamento.setValorTotal(rs.getDouble("valor_total"));
         parcelamento.setTotalParcelas(rs.getInt("total_parcelas"));
         parcelamento.setParcelasRestantes(rs.getInt("parcelas_restantes"));
-        parcelamento.setDataInicio(LocalDate.parse(rs.getString("data_inicio")));
+        
+        String dataInicioStr = rs.getString("data_inicio");
+        if (dataInicioStr != null && !dataInicioStr.isEmpty()) {
+            parcelamento.setDataInicio(LocalDate.parse(dataInicioStr));
+        } else {
+            parcelamento.setDataInicio(LocalDate.now());
+        }
         
         return parcelamento;
     }
@@ -414,10 +425,8 @@ public class ParcelamentoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void marcarParcelaPaga(int parcelaId, boolean paga) throws SQLException {
-        String sql = "UPDATE parcelas SET paga = ? WHERE id = ?";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_UPDATE_PARCELA_STATUS)) {
             
             stmt.setBoolean(1, paga);
             stmt.setInt(2, parcelaId);
@@ -441,10 +450,8 @@ public class ParcelamentoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public int buscarParcelamentoIdDaParcela(int parcelaId) throws SQLException {
-        String sql = "SELECT parcelamento_id FROM parcelas WHERE id = ?";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_GET_PARCELAMENTO_ID_FROM_PARCELA)) {
             
             stmt.setInt(1, parcelaId);
             
@@ -464,15 +471,12 @@ public class ParcelamentoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void atualizarParcelasRestantes(int parcelamentoId) throws SQLException {
-        String sqlCount = "SELECT COUNT(*) as restantes FROM parcelas WHERE parcelamento_id = ? AND paga = 0";
-        String sqlUpdate = "UPDATE parcelamentos SET parcelas_restantes = ? WHERE id = ?";
-        
         try (Connection conn = ConexaoBanco.getConexao()) {
             conn.setAutoCommit(true);
             
             // Contar parcelas não pagas
             int parcelasRestantes = 0;
-            try (PreparedStatement stmt = conn.prepareStatement(sqlCount)) {
+            try (PreparedStatement stmt = conn.prepareStatement(SQL_COUNT_UNPAID_PARCELAS)) {
                 stmt.setInt(1, parcelamentoId);
                 
                 try (ResultSet rs = stmt.executeQuery()) {
@@ -483,7 +487,7 @@ public class ParcelamentoDAO {
             }
             
             // Atualizar o parcelamento
-            try (PreparedStatement stmt = conn.prepareStatement(sqlUpdate)) {
+            try (PreparedStatement stmt = conn.prepareStatement(SQL_UPDATE_PARCELAS_RESTANTES)) {
                 stmt.setInt(1, parcelasRestantes);
                 stmt.setInt(2, parcelamentoId);
                 stmt.executeUpdate();
@@ -503,32 +507,64 @@ public class ParcelamentoDAO {
         LocalDate inicioProximoMes = hoje.plusMonths(1).withDayOfMonth(1);
         LocalDate fimProximoMes = inicioProximoMes.plusMonths(1).minusDays(1);
         
-        String sql = "SELECT p.*, par.id as parcelamento_id FROM parcelas p " +
-                     "JOIN parcelamentos par ON p.parcelamento_id = par.id " +
-                     "WHERE p.paga = 0 AND p.data_vencimento BETWEEN ? AND ? " +
-                     "ORDER BY p.data_vencimento";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_FIND_PARCELAS_NEXT_MONTH)) {
             
             stmt.setString(1, inicioProximoMes.toString());
             stmt.setString(2, fimProximoMes.toString());
             
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    Parcela parcela = new Parcela();
-                    parcela.setId(rs.getInt("id"));
-                    parcela.setNumeroParcela(rs.getInt("numero_parcela"));
-                    parcela.setValor(rs.getDouble("valor"));
-                    parcela.setDataVencimento(LocalDate.parse(rs.getString("data_vencimento")));
-                    parcela.setPaga(rs.getBoolean("paga"));
+                    Parcela parcela = construirParcela(rs);
                     parcela.setParcelamentoId(rs.getInt("parcelamento_id"));
-                    
                     parcelas.add(parcela);
                 }
             }
         }
         
         return parcelas;
+    }
+    
+    /**
+     * Realiza rollback da transação em caso de erro.
+     * @param conn a conexão com o banco de dados
+     */
+    private void realizarRollback(Connection conn) {
+        if (conn != null) {
+            try {
+                conn.rollback();
+            } catch (SQLException ex) {
+                ex.printStackTrace();
+            }
+        }
+    }
+    
+    /**
+     * Restaura o modo autoCommit da conexão.
+     * @param conn a conexão com o banco de dados
+     * @param originalAutoCommit o valor original de autoCommit
+     */
+    private void restaurarAutoCommit(Connection conn, boolean originalAutoCommit) {
+        if (conn != null) {
+            try {
+                conn.setAutoCommit(originalAutoCommit);
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+    
+    /**
+     * Fecha recursos JDBC de forma segura.
+     * @param rs o ResultSet a ser fechado
+     * @param stmt o Statement a ser fechado
+     */
+    private void fecharRecursos(ResultSet rs, Statement stmt) {
+        if (rs != null) {
+            try { rs.close(); } catch (SQLException e) { e.printStackTrace(); }
+        }
+        if (stmt != null) {
+            try { stmt.close(); } catch (SQLException e) { e.printStackTrace(); }
+        }
     }
 }

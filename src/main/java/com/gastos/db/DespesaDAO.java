@@ -10,11 +10,16 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.gastos.model.CartaoCredito;
+import com.gastos.model.CategoriaDespesa;
 import com.gastos.model.Despesa;
+import com.gastos.model.MeioPagamento;
+import com.gastos.model.Parcelamento;
+import com.gastos.model.Responsavel;
+import com.gastos.model.SubCategoria;
 
 /**
- * Classe DAO (Data Access Object) para a entidade Despesa.
- * Refatorada para melhorar organização e reduzir duplicação de código.
+ * Classe DAO para a entidade Despesa.
  */
 public class DespesaDAO {
     
@@ -36,16 +41,23 @@ public class DespesaDAO {
             "SELECT * FROM despesas WHERE " +
             "(data_compra BETWEEN ? AND ?) OR (data_vencimento BETWEEN ? AND ?) " +
             "ORDER BY data_compra DESC";
-    private static final String SQL_FIXED_EXPENSES = 
+    private static final String SQL_FIND_BY_FIELD = 
+            "SELECT * FROM despesas WHERE %s = ? ORDER BY data_vencimento DESC";
+    private static final String SQL_FIND_FIXED = 
             "SELECT * FROM despesas WHERE fixo = 1 ORDER BY data_vencimento DESC";
-    private static final String SQL_INSTALLMENT_EXPENSES = 
+    private static final String SQL_FIND_INSTALLMENT = 
             "SELECT * FROM despesas WHERE parcelamento_id IS NOT NULL ORDER BY data_compra DESC";
+    private static final String SQL_SUM_BY_GROUP =
+            "SELECT %s, SUM(d.valor) as total " +
+            "FROM despesas d " +
+            "JOIN %s %s ON %s = %s " +
+            "WHERE (d.data_vencimento BETWEEN ? AND ?) OR " +
+            "(d.data_vencimento IS NULL AND d.data_compra BETWEEN ? AND ?) " +
+            "GROUP BY %s " +
+            "ORDER BY total DESC";
     
     /**
      * Insere uma nova despesa no banco de dados.
-     * @param despesa a despesa a ser inserida
-     * @return o ID da despesa inserida
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public int inserir(Despesa despesa) throws SQLException {
         Connection conn = null;
@@ -55,12 +67,11 @@ public class DespesaDAO {
         try {
             conn = ConexaoBanco.getConexao();
             
-            // Validar categoria obrigatória
             if (despesa.getCategoria() == null || despesa.getCategoria().getId() <= 0) {
                 throw new SQLException("É necessário informar uma categoria válida para a despesa.");
             }
             
-            conn.setAutoCommit(false); // Iniciar transação
+            conn.setAutoCommit(false);
             
             // Inserir parcelamento primeiro, se existir
             if (despesa.getParcelamento() != null) {
@@ -109,8 +120,6 @@ public class DespesaDAO {
     
     /**
      * Atualiza uma despesa existente no banco de dados.
-     * @param despesa a despesa a ser atualizada
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public void atualizar(Despesa despesa) throws SQLException {
         Connection conn = null;
@@ -118,7 +127,7 @@ public class DespesaDAO {
         
         try {
             conn = ConexaoBanco.getConexao();
-            conn.setAutoCommit(false); // Iniciar transação
+            conn.setAutoCommit(false);
             
             // Atualizar ou inserir parcelamento, se existir
             if (despesa.getParcelamento() != null) {
@@ -165,9 +174,6 @@ public class DespesaDAO {
     
     /**
      * Preenche um PreparedStatement com os dados da despesa.
-     * @param stmt o PreparedStatement a ser preenchido
-     * @param despesa a despesa com os dados
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private void preencherStatement(PreparedStatement stmt, Despesa despesa) throws SQLException {
         stmt.setString(1, despesa.getDescricao());
@@ -186,28 +192,16 @@ public class DespesaDAO {
         // Categoria (obrigatória)
         stmt.setInt(7, despesa.getCategoria().getId());
         
-        // Subcategoria (opcional)
+        // Campos opcionais
         setIntOrNull(stmt, 8, despesa.getSubCategoria() != null ? despesa.getSubCategoria().getId() : null);
-        
-        // Responsável (opcional)
         setIntOrNull(stmt, 9, despesa.getResponsavel() != null ? despesa.getResponsavel().getId() : null);
-        
-        // Meio de pagamento (opcional)
         setIntOrNull(stmt, 10, despesa.getMeioPagamento() != null ? despesa.getMeioPagamento().getId() : null);
-        
-        // Cartão de crédito (opcional)
         setIntOrNull(stmt, 11, despesa.getCartaoCredito() != null ? despesa.getCartaoCredito().getId() : null);
-        
-        // Parcelamento (opcional)
         setIntOrNull(stmt, 12, despesa.getParcelamento() != null ? despesa.getParcelamento().getId() : null);
     }
     
     /**
      * Define um valor inteiro ou null em um PreparedStatement.
-     * @param stmt o PreparedStatement
-     * @param index o índice do parâmetro
-     * @param value o valor a ser definido (pode ser null)
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private void setIntOrNull(PreparedStatement stmt, int index, Integer value) throws SQLException {
         if (value != null) {
@@ -219,8 +213,6 @@ public class DespesaDAO {
     
     /**
      * Exclui uma despesa do banco de dados.
-     * @param id o ID da despesa a ser excluída
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public void excluir(int id) throws SQLException {
         Connection conn = null;
@@ -230,7 +222,7 @@ public class DespesaDAO {
         
         try {
             conn = ConexaoBanco.getConexao();
-            conn.setAutoCommit(false); // Iniciar transação
+            conn.setAutoCommit(false);
             
             // Verificar se a despesa tem parcelamento
             stmtBusca = conn.prepareStatement("SELECT parcelamento_id FROM despesas WHERE id = ?");
@@ -278,9 +270,6 @@ public class DespesaDAO {
     
     /**
      * Busca uma despesa pelo ID.
-     * @param id o ID da despesa a ser buscada
-     * @return a despesa encontrada ou null se não encontrar
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public Despesa buscarPorId(int id) throws SQLException {
         try (Connection conn = ConexaoBanco.getConexao();
@@ -299,8 +288,6 @@ public class DespesaDAO {
     
     /**
      * Lista todas as despesas do banco de dados.
-     * @return a lista de despesas
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public List<Despesa> listarTodas() throws SQLException {
         List<Despesa> despesas = new ArrayList<>();
@@ -323,8 +310,6 @@ public class DespesaDAO {
     
     /**
      * Lista despesas do mês atual.
-     * @return a lista de despesas do mês atual
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public List<Despesa> listarDespesasDoMes() throws SQLException {
         List<Despesa> despesas = new ArrayList<>();
@@ -343,11 +328,7 @@ public class DespesaDAO {
             
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
-                    try {
-                        despesas.add(construirDespesa(rs));
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+                    despesas.add(construirDespesa(rs));
                 }
             }
         }
@@ -357,14 +338,10 @@ public class DespesaDAO {
     
     /**
      * Lista despesas por um campo específico.
-     * @param campo o nome do campo
-     * @param valor o valor do campo
-     * @return a lista de despesas que correspondem ao critério
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private List<Despesa> listarPorCampo(String campo, int valor) throws SQLException {
         List<Despesa> despesas = new ArrayList<>();
-        String sql = "SELECT * FROM despesas WHERE " + campo + " = ? ORDER BY data_vencimento DESC";
+        String sql = String.format(SQL_FIND_BY_FIELD, campo);
         
         try (Connection conn = ConexaoBanco.getConexao();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -383,9 +360,6 @@ public class DespesaDAO {
     
     /**
      * Lista despesas por categoria.
-     * @param categoriaId o ID da categoria
-     * @return a lista de despesas da categoria
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public List<Despesa> listarPorCategoria(int categoriaId) throws SQLException {
         return listarPorCampo("categoria_id", categoriaId);
@@ -393,9 +367,6 @@ public class DespesaDAO {
     
     /**
      * Lista despesas por responsável.
-     * @param responsavelId o ID do responsável
-     * @return a lista de despesas do responsável
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public List<Despesa> listarPorResponsavel(int responsavelId) throws SQLException {
         return listarPorCampo("responsavel_id", responsavelId);
@@ -403,9 +374,6 @@ public class DespesaDAO {
     
     /**
      * Lista despesas por cartão de crédito.
-     * @param cartaoId o ID do cartão de crédito
-     * @return a lista de despesas do cartão
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public List<Despesa> listarPorCartao(int cartaoId) throws SQLException {
         return listarPorCampo("cartao_id", cartaoId);
@@ -413,15 +381,13 @@ public class DespesaDAO {
     
     /**
      * Lista despesas fixas.
-     * @return a lista de despesas fixas
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public List<Despesa> listarDespesasFixas() throws SQLException {
         List<Despesa> despesas = new ArrayList<>();
         
         try (Connection conn = ConexaoBanco.getConexao();
              Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(SQL_FIXED_EXPENSES)) {
+             ResultSet rs = stmt.executeQuery(SQL_FIND_FIXED)) {
             
             while (rs.next()) {
                 despesas.add(construirDespesa(rs));
@@ -433,15 +399,13 @@ public class DespesaDAO {
     
     /**
      * Lista despesas parceladas.
-     * @return a lista de despesas parceladas
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public List<Despesa> listarDespesasParceladas() throws SQLException {
         List<Despesa> despesas = new ArrayList<>();
         
         try (Connection conn = ConexaoBanco.getConexao();
              Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(SQL_INSTALLMENT_EXPENSES)) {
+             ResultSet rs = stmt.executeQuery(SQL_FIND_INSTALLMENT)) {
             
             while (rs.next()) {
                 despesas.add(construirDespesa(rs));
@@ -453,9 +417,6 @@ public class DespesaDAO {
     
     /**
      * Constrói um objeto Despesa a partir de um ResultSet.
-     * @param rs o ResultSet contendo os dados da despesa
-     * @return a despesa construída
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private Despesa construirDespesa(ResultSet rs) throws SQLException {
         Despesa despesa = new Despesa();
@@ -464,25 +425,16 @@ public class DespesaDAO {
         despesa.setDescricao(rs.getString("descricao"));
         despesa.setValor(rs.getDouble("valor"));
         
-        // Data de compra
         String dataCompraStr = rs.getString("data_compra");
-        if (dataCompraStr != null && !dataCompraStr.isEmpty()) {
-            try {
-                despesa.setDataCompra(LocalDate.parse(dataCompraStr));
-            } catch (Exception e) {
-                despesa.setDataCompra(LocalDate.now());
-            }
-        } else {
-            despesa.setDataCompra(LocalDate.now());
-        }
+        despesa.setDataCompra(dataCompraStr != null && !dataCompraStr.isEmpty() ? 
+                LocalDate.parse(dataCompraStr) : LocalDate.now());
         
-        // Data de vencimento (opcional)
         String dataVencimentoStr = rs.getString("data_vencimento");
         if (dataVencimentoStr != null && !dataVencimentoStr.isEmpty()) {
             try {
                 despesa.setDataVencimento(LocalDate.parse(dataVencimentoStr));
             } catch (Exception e) {
-                // Deixar como null
+                // Manter como null em caso de erro de parsing
             }
         }
         
@@ -497,12 +449,9 @@ public class DespesaDAO {
     
     /**
      * Carrega os objetos relacionados a uma despesa.
-     * @param despesa a despesa a ser carregada
-     * @param rs o ResultSet com os dados
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private void carregarObjetosRelacionados(Despesa despesa, ResultSet rs) throws SQLException {
-        // Carregar categoria
+        // Categoria
         int categoriaId = rs.getInt("categoria_id");
         if (!rs.wasNull()) {
             try {
@@ -513,7 +462,7 @@ public class DespesaDAO {
             }
         }
         
-        // Carregar subcategoria
+        // Subcategoria
         int subcategoriaId = rs.getInt("subcategoria_id");
         if (!rs.wasNull()) {
             try {
@@ -524,7 +473,7 @@ public class DespesaDAO {
             }
         }
         
-        // Carregar responsável
+        // Responsável
         int responsavelId = rs.getInt("responsavel_id");
         if (!rs.wasNull()) {
             try {
@@ -535,7 +484,7 @@ public class DespesaDAO {
             }
         }
         
-        // Carregar meio de pagamento
+        // Meio de Pagamento
         int meioPagamentoId = rs.getInt("meio_pagamento_id");
         if (!rs.wasNull()) {
             try {
@@ -546,7 +495,7 @@ public class DespesaDAO {
             }
         }
         
-        // Carregar cartão de crédito
+        // Cartão de Crédito
         int cartaoId = rs.getInt("cartao_id");
         if (!rs.wasNull()) {
             try {
@@ -557,7 +506,7 @@ public class DespesaDAO {
             }
         }
         
-        // Carregar parcelamento
+        // Parcelamento
         int parcelamentoId = rs.getInt("parcelamento_id");
         if (!rs.wasNull()) {
             try {
@@ -571,28 +520,15 @@ public class DespesaDAO {
     
     /**
      * Calcula o total por um determinado agrupamento.
-     * @param campoNome o campo de nome a ser usado no SELECT
-     * @param campoAgrupamento o campo para agrupar os resultados
-     * @param campoJoin o campo de join
-     * @param tabela a tabela para join
-     * @param alias o alias da tabela
-     * @return uma lista de pares (nome, valor)
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private List<Object[]> calcularTotalAgrupado(String campoNome, String campoAgrupamento, 
-                                                String campoJoin, String tabela, String alias) throws SQLException {
+                                               String campoJoin, String tabela, String alias) throws SQLException {
         List<Object[]> totais = new ArrayList<>();
         
         LocalDate inicio = LocalDate.now().withDayOfMonth(1);
         LocalDate fim = inicio.plusMonths(1).minusDays(1);
         
-        String sql = "SELECT " + campoNome + ", SUM(d.valor) as total " +
-                     "FROM despesas d " +
-                     "JOIN " + tabela + " " + alias + " ON " + campoAgrupamento + " = " + campoJoin + " " +
-                     "WHERE (d.data_vencimento BETWEEN ? AND ?) OR " +
-                     "(d.data_vencimento IS NULL AND d.data_compra BETWEEN ? AND ?) " +
-                     "GROUP BY " + campoAgrupamento + " " +
-                     "ORDER BY total DESC";
+        String sql = String.format(SQL_SUM_BY_GROUP, campoNome, tabela, alias, campoAgrupamento, campoJoin, campoAgrupamento);
         
         try (Connection conn = ConexaoBanco.getConexao();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -616,8 +552,6 @@ public class DespesaDAO {
     
     /**
      * Calcula o total de despesas do mês por categoria.
-     * @return uma lista de pares (categoria, valor)
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public List<Object[]> calcularTotalPorCategoria() throws SQLException {
         return calcularTotalAgrupado("c.nome", "d.categoria_id", "c.id", "categorias", "c");
@@ -625,8 +559,6 @@ public class DespesaDAO {
     
     /**
      * Calcula o total de despesas do mês por responsável.
-     * @return uma lista de pares (responsável, valor)
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public List<Object[]> calcularTotalPorResponsavel() throws SQLException {
         return calcularTotalAgrupado("r.nome", "d.responsavel_id", "r.id", "responsaveis", "r");
@@ -634,8 +566,6 @@ public class DespesaDAO {
     
     /**
      * Fecha recursos JDBC de forma segura.
-     * @param rs o ResultSet a ser fechado (pode ser null)
-     * @param stmt o Statement a ser fechado (pode ser null)
      */
     private void fecharRecursos(ResultSet rs, Statement stmt) {
         if (rs != null) {

@@ -24,7 +24,7 @@ public class DespesaController {
     }
 
     /**
-     * Salva uma nova despesa no sistema com informações detalhadas de erro.
+     * Salva uma nova despesa no sistema.
      * @param despesa a despesa a ser salva
      * @return um objeto Resultado contendo status e mensagem
      */
@@ -33,56 +33,57 @@ public class DespesaController {
             // Validações antes de salvar
             List<String> erros = validarDespesa(despesa);
             if (!erros.isEmpty()) {
-                StringBuilder mensagemErro = new StringBuilder("Erros na validação da despesa:\n");
-                for (String erro : erros) {
-                    mensagemErro.append("- ").append(erro).append("\n");
-                }
-                return new Resultado(false, mensagemErro.toString());
+                return new Resultado(false, construirMensagemErros(erros));
             }
-
-            System.out.println("Iniciando salvamento de despesa: " + despesa.getDescricao());
 
             // Verificar se é uma nova despesa ou uma atualização
             if (despesa.getId() == 0) {
                 int id = despesaDAO.inserir(despesa);
                 despesa.setId(id);
-                System.out.println("Nova despesa inserida com ID: " + id);
             } else {
                 despesaDAO.atualizar(despesa);
-                System.out.println("Despesa atualizada. ID: " + despesa.getId());
             }
             return new Resultado(true, "Despesa salva com sucesso!");
         } catch (SQLException e) {
-            System.err.println("Erro detalhado ao salvar despesa: " + e.getMessage());
-            if (e.getCause() != null) {
-                System.err.println("Causa: " + e.getCause().getMessage());
-            }
-            e.printStackTrace();
-
-            // Construir mensagem de erro detalhada
-            String mensagemErro = "Erro ao salvar despesa: " + e.getMessage();
-
-            // Adicionar informações sobre parcelamento se houver
-            if (despesa.getParcelamento() != null) {
-                mensagemErro += "\n\nDetalhes do parcelamento:\n" +
-                                "- Valor total: R$ " + despesa.getParcelamento().getValorTotal() + "\n" +
-                                "- Número de parcelas: " + despesa.getParcelamento().getTotalParcelas() + "\n" +
-                                "- Data de início: " + despesa.getParcelamento().getDataInicio();
-            }
-
-            // Verificar se o erro está relacionado ao cartão de crédito
-            if (despesa.getCartaoCredito() != null && mensagemErro.toLowerCase().contains("cartao")) {
-                mensagemErro += "\n\nVerifique se o cartão de crédito selecionado está correto.";
-            }
-
-            return new Resultado(false, mensagemErro);
+            return new Resultado(false, montarMensagemErro(e, despesa));
         }
     }
 
     /**
+     * Constrói mensagem de erro a partir da lista de erros
+     */
+    private String construirMensagemErros(List<String> erros) {
+        StringBuilder mensagemErro = new StringBuilder("Erros na validação da despesa:\n");
+        for (String erro : erros) {
+            mensagemErro.append("- ").append(erro).append("\n");
+        }
+        return mensagemErro.toString();
+    }
+
+    /**
+     * Monta uma mensagem de erro detalhada
+     */
+    private String montarMensagemErro(SQLException e, Despesa despesa) {
+        String mensagemErro = "Erro ao salvar despesa: " + e.getMessage();
+
+        // Adicionar informações sobre parcelamento se houver
+        if (despesa.getParcelamento() != null) {
+            mensagemErro += "\n\nDetalhes do parcelamento:\n" +
+                          "- Valor total: R$ " + despesa.getParcelamento().getValorTotal() + "\n" +
+                          "- Número de parcelas: " + despesa.getParcelamento().getTotalParcelas() + "\n" +
+                          "- Data de início: " + despesa.getParcelamento().getDataInicio();
+        }
+
+        // Verificar se o erro está relacionado ao cartão de crédito
+        if (despesa.getCartaoCredito() != null && mensagemErro.toLowerCase().contains("cartao")) {
+            mensagemErro += "\n\nVerifique se o cartão de crédito selecionado está correto.";
+        }
+
+        return mensagemErro;
+    }
+
+    /**
      * Valida os dados da despesa antes de salvar.
-     * @param despesa a despesa a ser validada
-     * @return lista de mensagens de erro, vazia se não houver erros
      */
     private List<String> validarDespesa(Despesa despesa) {
         List<String> erros = new ArrayList<>();
@@ -108,7 +109,15 @@ public class DespesaController {
             erros.add("É necessário selecionar um cartão de crédito quando o meio de pagamento é cartão");
         }
 
-        // Validar parcelamento
+        validarParcelamento(despesa, erros);
+
+        return erros;
+    }
+    
+    /**
+     * Valida dados de parcelamento
+     */
+    private void validarParcelamento(Despesa despesa, List<String> erros) {
         if (despesa.getParcelamento() != null) {
             if (despesa.getParcelamento().getTotalParcelas() <= 0) {
                 erros.add("O número de parcelas deve ser maior que zero");
@@ -135,204 +144,39 @@ public class DespesaController {
                 }
             }
         }
-
-        return erros;
     }
 
     /**
      * Exclui uma despesa do sistema.
-     * @param id o ID da despesa a ser excluída
-     * @return true se a operação foi bem-sucedida
      */
     public boolean excluirDespesa(int id) {
-        return executarOperacao(() -> {
+        try {
             despesaDAO.excluir(id);
-            System.out.println("Despesa excluída. ID: " + id);
             return true;
-        }, false);
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return false;
+        }
     }
 
     /**
      * Busca uma despesa pelo ID.
-     * @param id o ID da despesa
-     * @return a despesa encontrada ou null se não encontrar
      */
     public Despesa buscarDespesaPorId(int id) {
-        return executarOperacao(() -> despesaDAO.buscarPorId(id), null);
+        try {
+            return despesaDAO.buscarPorId(id);
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 
     /**
      * Lista todas as despesas do sistema.
-     * @return uma lista observável de despesas
      */
     public ObservableList<Despesa> listarTodasDespesas() {
-        return executarOperacaoLista(despesaDAO::listarTodas);
-    }
-
-    /**
-     * Lista as despesas do mês atual, com fallback manual em caso de erro no DAO.
-     * @return uma lista observável de despesas do mês
-     */
-    public ObservableList<Despesa> listarDespesasDoMes() {
         try {
-            System.out.println("Solicitando lista de despesas do mês ao DAO");
-            List<Despesa> despesas = despesaDAO.listarDespesasDoMes();
-            System.out.println("Despesas do mês listadas: " + despesas.size());
-
-            if (despesas.isEmpty()) {
-                System.out.println("ATENÇÃO: Nenhuma despesa encontrada para o mês atual!");
-            } else {
-                for (int i = 0; i < Math.min(5, despesas.size()); i++) {
-                    Despesa d = despesas.get(i);
-                    System.out.println("Despesa " + (i+1) + ": " + d.getDescricao() +
-                            " - R$ " + d.getValor() +
-                            " - Data: " + d.getDataCompra());
-                }
-                if (despesas.size() > 5) {
-                    System.out.println("... e mais " + (despesas.size() - 5) + " despesas.");
-                }
-            }
-
-            return FXCollections.observableArrayList(despesas);
-
-        } catch (SQLException e) {
-            System.err.println("Erro ao listar despesas do mês: " + e.getMessage());
-            e.printStackTrace();
-            // Fallback manual
-            return fallbackListarDespesasDoMes();
-        }
-    }
-
-    /**
-     * Fallback: caso ocorra erro no método listarDespesasDoMes do DAO,
-     * faz a busca de todas as despesas e filtra manualmente as do mês atual.
-     */
-    private ObservableList<Despesa> fallbackListarDespesasDoMes() {
-        try {
-            System.out.println("Tentando abordagem alternativa: listar todas as despesas...");
-            List<Despesa> todasDespesas = despesaDAO.listarTodas();
-
-            LocalDate inicio = LocalDate.now().withDayOfMonth(1);
-            LocalDate fim = inicio.plusMonths(1).minusDays(1);
-
-            List<Despesa> despesasDoMes = todasDespesas.stream()
-                    .filter(d -> {
-                        boolean dentroDataCompra =
-                                !d.getDataCompra().isBefore(inicio) && !d.getDataCompra().isAfter(fim);
-
-                        boolean dentroDataVencimento = d.getDataVencimento() != null &&
-                                !d.getDataVencimento().isBefore(inicio) &&
-                                !d.getDataVencimento().isAfter(fim);
-
-                        return dentroDataCompra || dentroDataVencimento;
-                    })
-                    .collect(Collectors.toList());
-
-            System.out.println("Abordagem alternativa encontrou " + despesasDoMes.size() + " despesas do mês.");
-            return FXCollections.observableArrayList(despesasDoMes);
-        } catch (Exception ex) {
-            System.err.println("Erro também na abordagem alternativa: " + ex.getMessage());
-            ex.printStackTrace();
-        }
-        return FXCollections.observableArrayList();
-    }
-
-    /**
-     * Lista as despesas por categoria.
-     */
-    public ObservableList<Despesa> listarDespesasPorCategoria(int categoriaId) {
-        return executarOperacaoLista(() -> despesaDAO.listarPorCategoria(categoriaId));
-    }
-
-    /**
-     * Lista as despesas por responsável.
-     */
-    public ObservableList<Despesa> listarDespesasPorResponsavel(int responsavelId) {
-        return executarOperacaoLista(() -> despesaDAO.listarPorResponsavel(responsavelId));
-    }
-
-    /**
-     * Lista as despesas por cartão de crédito.
-     */
-    public ObservableList<Despesa> listarDespesasPorCartao(int cartaoId) {
-        return executarOperacaoLista(() -> despesaDAO.listarPorCartao(cartaoId));
-    }
-
-    /**
-     * Lista as despesas fixas.
-     */
-    public ObservableList<Despesa> listarDespesasFixas() {
-        return executarOperacaoLista(despesaDAO::listarDespesasFixas);
-    }
-
-    /**
-     * Lista as despesas parceladas.
-     */
-    public ObservableList<Despesa> listarDespesasParceladas() {
-        return executarOperacaoLista(despesaDAO::listarDespesasParceladas);
-    }
-
-    /**
-     * Obtém dados para o gráfico de despesas por categoria.
-     * Retorna uma lista de pares (categoria, valor).
-     */
-    public List<Object[]> obterDadosGraficoPorCategoria() {
-        return executarOperacao(despesaDAO::calcularTotalPorCategoria, new ArrayList<>());
-    }
-
-    /**
-     * Obtém dados para o gráfico de despesas por responsável.
-     * Retorna uma lista de pares (responsável, valor).
-     */
-    public List<Object[]> obterDadosGraficoPorResponsavel() {
-        return executarOperacao(despesaDAO::calcularTotalPorResponsavel, new ArrayList<>());
-    }
-
-    /**
-     * Calcula o total de despesas do mês atual.
-     */
-    public double calcularTotalDespesasDoMes() {
-        ObservableList<Despesa> despesas = listarDespesasDoMes();
-        double total = despesas.stream().mapToDouble(Despesa::getValor).sum();
-        System.out.println("Total de despesas do mês: R$ " + total);
-        return total;
-    }
-
-    /**
-     * Calcula o total de despesas pagas do mês atual.
-     */
-    public double calcularTotalDespesasPagasDoMes() {
-        ObservableList<Despesa> despesas = listarDespesasDoMes();
-        double total = despesas.stream()
-                .filter(Despesa::isPago)
-                .mapToDouble(Despesa::getValor)
-                .sum();
-        System.out.println("Total de despesas pagas do mês: R$ " + total);
-        return total;
-    }
-
-    /**
-     * Calcula o total de despesas a pagar do mês atual.
-     */
-    public double calcularTotalDespesasAPagarDoMes() {
-        ObservableList<Despesa> despesas = listarDespesasDoMes();
-        double total = despesas.stream()
-                .filter(d -> !d.isPago())
-                .mapToDouble(Despesa::getValor)
-                .sum();
-        System.out.println("Total de despesas a pagar do mês: R$ " + total);
-        return total;
-    }
-
-    /* ------------------------------------------------------------
-       Métodos auxiliares para reduzir try-catch repetitivos
-       ------------------------------------------------------------ */
-    /**
-     * Executa uma operação que retorna uma lista de objetos e a converte em ObservableList.
-     */
-    private <T> ObservableList<T> executarOperacaoLista(DAOListOperation<T> operacao) {
-        try {
-            return FXCollections.observableArrayList(operacao.executar());
+            return FXCollections.observableArrayList(despesaDAO.listarTodas());
         } catch (SQLException e) {
             e.printStackTrace();
             return FXCollections.observableArrayList();
@@ -340,31 +184,155 @@ public class DespesaController {
     }
 
     /**
-     * Executa uma operação genérica que retorna um objeto (ou valor),
-     * usando um valor padrão em caso de exceção.
+     * Lista as despesas do mês atual.
      */
-    private <R> R executarOperacao(DAOOperation<R> operacao, R defaultValue) {
+    public ObservableList<Despesa> listarDespesasDoMes() {
         try {
-            return operacao.executar();
+            return FXCollections.observableArrayList(despesaDAO.listarDespesasDoMes());
         } catch (SQLException e) {
             e.printStackTrace();
-            return defaultValue;
+            return filtrarDespesasPorMesAtual(listarTodasDespesas());
         }
     }
 
-    @FunctionalInterface
-    private interface DAOListOperation<T> {
-        List<T> executar() throws SQLException;
-    }
+    /**
+     * Filtra despesas por mês atual como fallback
+     */
+    private ObservableList<Despesa> filtrarDespesasPorMesAtual(ObservableList<Despesa> todasDespesas) {
+        LocalDate inicio = LocalDate.now().withDayOfMonth(1);
+        LocalDate fim = inicio.plusMonths(1).minusDays(1);
 
-    @FunctionalInterface
-    private interface DAOOperation<R> {
-        R executar() throws SQLException;
+        List<Despesa> despesasDoMes = todasDespesas.stream()
+                .filter(d -> {
+                    boolean dentroDataCompra =
+                            !d.getDataCompra().isBefore(inicio) && !d.getDataCompra().isAfter(fim);
+
+                    boolean dentroDataVencimento = d.getDataVencimento() != null &&
+                            !d.getDataVencimento().isBefore(inicio) &&
+                            !d.getDataVencimento().isAfter(fim);
+
+                    return dentroDataCompra || dentroDataVencimento;
+                })
+                .collect(Collectors.toList());
+
+        return FXCollections.observableArrayList(despesasDoMes);
     }
 
     /**
-     * Classe interna (ou pode ficar externa) para representar o resultado de uma operação.
-     * Mantive aqui, mas se preferir pode deixá-la fora.
+     * Lista as despesas por categoria.
+     */
+    public ObservableList<Despesa> listarDespesasPorCategoria(int categoriaId) {
+        try {
+            return FXCollections.observableArrayList(despesaDAO.listarPorCategoria(categoriaId));
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return FXCollections.observableArrayList();
+        }
+    }
+
+    /**
+     * Lista as despesas por responsável.
+     */
+    public ObservableList<Despesa> listarDespesasPorResponsavel(int responsavelId) {
+        try {
+            return FXCollections.observableArrayList(despesaDAO.listarPorResponsavel(responsavelId));
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return FXCollections.observableArrayList();
+        }
+    }
+
+    /**
+     * Lista as despesas por cartão de crédito.
+     */
+    public ObservableList<Despesa> listarDespesasPorCartao(int cartaoId) {
+        try {
+            return FXCollections.observableArrayList(despesaDAO.listarPorCartao(cartaoId));
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return FXCollections.observableArrayList();
+        }
+    }
+
+    /**
+     * Lista as despesas fixas.
+     */
+    public ObservableList<Despesa> listarDespesasFixas() {
+        try {
+            return FXCollections.observableArrayList(despesaDAO.listarDespesasFixas());
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return FXCollections.observableArrayList();
+        }
+    }
+
+    /**
+     * Lista as despesas parceladas.
+     */
+    public ObservableList<Despesa> listarDespesasParceladas() {
+        try {
+            return FXCollections.observableArrayList(despesaDAO.listarDespesasParceladas());
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return FXCollections.observableArrayList();
+        }
+    }
+
+    /**
+     * Obtém dados para o gráfico de despesas por categoria.
+     */
+    public List<Object[]> obterDadosGraficoPorCategoria() {
+        try {
+            return despesaDAO.calcularTotalPorCategoria();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Obtém dados para o gráfico de despesas por responsável.
+     */
+    public List<Object[]> obterDadosGraficoPorResponsavel() {
+        try {
+            return despesaDAO.calcularTotalPorResponsavel();
+        } catch (SQLException e) {
+            e.printStackTrace();
+            return new ArrayList<>();
+        }
+    }
+
+    /**
+     * Calcula o total de despesas do mês atual.
+     */
+    public double calcularTotalDespesasDoMes() {
+        return listarDespesasDoMes().stream()
+                .mapToDouble(Despesa::getValor)
+                .sum();
+    }
+
+    /**
+     * Calcula o total de despesas pagas do mês atual.
+     */
+    public double calcularTotalDespesasPagasDoMes() {
+        return listarDespesasDoMes().stream()
+                .filter(Despesa::isPago)
+                .mapToDouble(Despesa::getValor)
+                .sum();
+    }
+
+    /**
+     * Calcula o total de despesas a pagar do mês atual.
+     */
+    public double calcularTotalDespesasAPagarDoMes() {
+        return listarDespesasDoMes().stream()
+                .filter(d -> !d.isPago())
+                .mapToDouble(Despesa::getValor)
+                .sum();
+    }
+
+    /**
+     * Classe para representar o resultado de uma operação.
      */
     public static class Resultado {
         private final boolean sucesso;
