@@ -14,7 +14,7 @@ public class GerenciadorFinanceiroApp extends Application {
     public void start(Stage primaryStage) {
         try {
             // Inicializa o banco de dados
-            ConexaoBanco.inicializarBancoDados();
+            ConexaoBanco.inicializarBancoDeDados();
             
             // Cria a tela principal
             TelaPrincipal telaPrincipal = new TelaPrincipal();
