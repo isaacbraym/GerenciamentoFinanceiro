@@ -11,19 +11,24 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
-import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
-import java.sql.SQLException;
 import java.util.Optional;
 
 /**
  * Tela para gerenciar categorias e subcategorias de despesas.
  */
 public class TelaCategorias {
+    
+    // Constantes para estilo
+    private static final String STYLE_PANEL = "-fx-background-color: white; -fx-background-radius: 5;";
+    private static final String STYLE_BACKGROUND = "-fx-background-color: #f5f5f5;";
+    private static final String STYLE_BTN_PRIMARY = "-fx-background-color: #3498db; -fx-text-fill: white;";
+    private static final String STYLE_BTN_SUCCESS = "-fx-background-color: #2ecc71; -fx-text-fill: white;";
+    private static final String STYLE_BTN_DANGER = "-fx-background-color: #e74c3c; -fx-text-fill: white;";
     
     private final Stage janela;
     private final CategoriaController categoriaController;
@@ -67,7 +72,7 @@ public class TelaCategorias {
         // Painel principal
         BorderPane painelPrincipal = new BorderPane();
         painelPrincipal.setPadding(new Insets(20));
-        painelPrincipal.setStyle("-fx-background-color: #f5f5f5;");
+        painelPrincipal.setStyle(STYLE_BACKGROUND);
         
         // Título
         Label lblTitulo = new Label("Gerenciamento de Categorias");
@@ -87,19 +92,7 @@ public class TelaCategorias {
         painelPrincipal.setCenter(painelConteudo);
         
         // Botões de ação principais
-        HBox painelBotoes = new HBox(15);
-        painelBotoes.setAlignment(Pos.CENTER_RIGHT);
-        painelBotoes.setPadding(new Insets(10, 0, 0, 0));
-        
-        Button btnResetar = new Button("Resetar Banco de Dados");
-        btnResetar.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white;");
-        btnResetar.setOnAction(e -> resetarBancoDados());
-        
-        Button btnFechar = new Button("Fechar");
-        btnFechar.setStyle("-fx-background-color: #3498db; -fx-text-fill: white;");
-        btnFechar.setOnAction(e -> janela.close());
-        
-        painelBotoes.getChildren().addAll(btnResetar, btnFechar);
+        HBox painelBotoes = criarPainelBotoes();
         painelPrincipal.setBottom(painelBotoes);
         
         // Criar cena e configurar a janela
@@ -109,31 +102,55 @@ public class TelaCategorias {
     
     /**
      * Cria o painel de categorias.
-     * @return o painel de categorias
      */
     private VBox criarPainelCategorias() {
         VBox painel = new VBox(10);
         painel.setPadding(new Insets(10));
-        painel.setStyle("-fx-background-color: white; -fx-background-radius: 5;");
+        painel.setStyle(STYLE_PANEL);
         painel.setPrefWidth(380);
         
         // Título do painel
-        Label titulo = new Label("Categorias");
-        titulo.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+        Label titulo = criarTituloPainel("Categorias");
         
         // Tabela de categorias
-        tabelaCategorias = new TableView<>();
-        tabelaCategorias.setPrefHeight(300);
+        tabelaCategorias = criarTabelaCategorias();
+        
+        // Painel para adicionar nova categoria
+        HBox painelNovaCategoria = criarPainelNovaCategoria();
+        
+        // Botões de ação para categorias
+        HBox painelBotoesCategorias = criarPainelBotoesCategorias();
+        
+        painel.getChildren().addAll(titulo, tabelaCategorias, painelNovaCategoria, painelBotoesCategorias);
+        
+        return painel;
+    }
+    
+    /**
+     * Cria o título para um painel.
+     */
+    private Label criarTituloPainel(String texto) {
+        Label titulo = new Label(texto);
+        titulo.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+        return titulo;
+    }
+    
+    /**
+     * Cria a tabela de categorias.
+     */
+    private TableView<CategoriaDespesa> criarTabelaCategorias() {
+        TableView<CategoriaDespesa> tabela = new TableView<>();
+        tabela.setPrefHeight(300);
         
         // Configurar colunas
         TableColumn<CategoriaDespesa, String> colunaNome = new TableColumn<>("Nome");
         colunaNome.setCellValueFactory(new PropertyValueFactory<>("nome"));
         colunaNome.setPrefWidth(340);
         
-        tabelaCategorias.getColumns().add(colunaNome);
+        tabela.getColumns().add(colunaNome);
         
         // Adicionar listener para selecionar categoria
-        tabelaCategorias.getSelectionModel().selectedItemProperty().addListener(
+        tabela.getSelectionModel().selectedItemProperty().addListener(
                 (observable, oldValue, newValue) -> {
                     if (newValue != null) {
                         atualizarTabelaSubcategorias(newValue);
@@ -142,94 +159,140 @@ public class TelaCategorias {
                     }
                 });
         
-        // Painel para adicionar nova categoria
-        HBox painelNovaCategoria = new HBox(10);
-        painelNovaCategoria.setAlignment(Pos.CENTER_LEFT);
+        return tabela;
+    }
+    
+    /**
+     * Cria o painel para adicionar nova categoria.
+     */
+    private HBox criarPainelNovaCategoria() {
+        HBox painel = new HBox(10);
+        painel.setAlignment(Pos.CENTER_LEFT);
         
         txtNovaCategoria = new TextField();
         txtNovaCategoria.setPromptText("Nova categoria");
         txtNovaCategoria.setPrefWidth(250);
         
         Button btnAdicionarCategoria = new Button("Adicionar");
-        btnAdicionarCategoria.setStyle("-fx-background-color: #2ecc71; -fx-text-fill: white;");
+        btnAdicionarCategoria.setStyle(STYLE_BTN_SUCCESS);
         btnAdicionarCategoria.setOnAction(e -> adicionarCategoria());
         
-        painelNovaCategoria.getChildren().addAll(txtNovaCategoria, btnAdicionarCategoria);
-        
-        // Botões de ação para categorias
-        HBox painelBotoesCategorias = new HBox(10);
-        painelBotoesCategorias.setAlignment(Pos.CENTER_LEFT);
+        painel.getChildren().addAll(txtNovaCategoria, btnAdicionarCategoria);
+        return painel;
+    }
+    
+    /**
+     * Cria o painel de botões para categorias.
+     */
+    private HBox criarPainelBotoesCategorias() {
+        HBox painel = new HBox(10);
+        painel.setAlignment(Pos.CENTER_LEFT);
         
         Button btnEditarCategoria = new Button("Editar");
-        btnEditarCategoria.setStyle("-fx-background-color: #3498db; -fx-text-fill: white;");
+        btnEditarCategoria.setStyle(STYLE_BTN_PRIMARY);
         btnEditarCategoria.setOnAction(e -> editarCategoria());
         
         Button btnExcluirCategoria = new Button("Excluir");
-        btnExcluirCategoria.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white;");
+        btnExcluirCategoria.setStyle(STYLE_BTN_DANGER);
         btnExcluirCategoria.setOnAction(e -> excluirCategoria());
         
-        painelBotoesCategorias.getChildren().addAll(btnEditarCategoria, btnExcluirCategoria);
-        
-        painel.getChildren().addAll(titulo, tabelaCategorias, painelNovaCategoria, painelBotoesCategorias);
-        
+        painel.getChildren().addAll(btnEditarCategoria, btnExcluirCategoria);
         return painel;
     }
     
     /**
      * Cria o painel de subcategorias.
-     * @return o painel de subcategorias
      */
     private VBox criarPainelSubcategorias() {
         VBox painel = new VBox(10);
         painel.setPadding(new Insets(10));
-        painel.setStyle("-fx-background-color: white; -fx-background-radius: 5;");
+        painel.setStyle(STYLE_PANEL);
         painel.setPrefWidth(380);
         
         // Título do painel
-        Label titulo = new Label("Subcategorias");
-        titulo.setFont(Font.font("Arial", FontWeight.BOLD, 16));
+        Label titulo = criarTituloPainel("Subcategorias");
         
         // Tabela de subcategorias
-        tabelaSubcategorias = new TableView<>();
-        tabelaSubcategorias.setPrefHeight(300);
+        tabelaSubcategorias = criarTabelaSubcategorias();
+        
+        // Painel para adicionar nova subcategoria
+        HBox painelNovaSubcategoria = criarPainelNovaSubcategoria();
+        
+        // Botões de ação para subcategorias
+        HBox painelBotoesSubcategorias = criarPainelBotoesSubcategorias();
+        
+        painel.getChildren().addAll(titulo, tabelaSubcategorias, painelNovaSubcategoria, painelBotoesSubcategorias);
+        
+        return painel;
+    }
+    
+    /**
+     * Cria a tabela de subcategorias.
+     */
+    private TableView<SubCategoria> criarTabelaSubcategorias() {
+        TableView<SubCategoria> tabela = new TableView<>();
+        tabela.setPrefHeight(300);
         
         // Configurar colunas
         TableColumn<SubCategoria, String> colunaNome = new TableColumn<>("Nome");
         colunaNome.setCellValueFactory(new PropertyValueFactory<>("nome"));
         colunaNome.setPrefWidth(340);
         
-        tabelaSubcategorias.getColumns().add(colunaNome);
-        
-        // Painel para adicionar nova subcategoria
-        HBox painelNovaSubcategoria = new HBox(10);
-        painelNovaSubcategoria.setAlignment(Pos.CENTER_LEFT);
+        tabela.getColumns().add(colunaNome);
+        return tabela;
+    }
+    
+    /**
+     * Cria o painel para adicionar nova subcategoria.
+     */
+    private HBox criarPainelNovaSubcategoria() {
+        HBox painel = new HBox(10);
+        painel.setAlignment(Pos.CENTER_LEFT);
         
         txtNovaSubcategoria = new TextField();
         txtNovaSubcategoria.setPromptText("Nova subcategoria");
         txtNovaSubcategoria.setPrefWidth(250);
         
         Button btnAdicionarSubcategoria = new Button("Adicionar");
-        btnAdicionarSubcategoria.setStyle("-fx-background-color: #2ecc71; -fx-text-fill: white;");
+        btnAdicionarSubcategoria.setStyle(STYLE_BTN_SUCCESS);
         btnAdicionarSubcategoria.setOnAction(e -> adicionarSubcategoria());
         
-        painelNovaSubcategoria.getChildren().addAll(txtNovaSubcategoria, btnAdicionarSubcategoria);
-        
-        // Botões de ação para subcategorias
-        HBox painelBotoesSubcategorias = new HBox(10);
-        painelBotoesSubcategorias.setAlignment(Pos.CENTER_LEFT);
+        painel.getChildren().addAll(txtNovaSubcategoria, btnAdicionarSubcategoria);
+        return painel;
+    }
+    
+    /**
+     * Cria o painel de botões para subcategorias.
+     */
+    private HBox criarPainelBotoesSubcategorias() {
+        HBox painel = new HBox(10);
+        painel.setAlignment(Pos.CENTER_LEFT);
         
         Button btnEditarSubcategoria = new Button("Editar");
-        btnEditarSubcategoria.setStyle("-fx-background-color: #3498db; -fx-text-fill: white;");
+        btnEditarSubcategoria.setStyle(STYLE_BTN_PRIMARY);
         btnEditarSubcategoria.setOnAction(e -> editarSubcategoria());
         
         Button btnExcluirSubcategoria = new Button("Excluir");
-        btnExcluirSubcategoria.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white;");
+        btnExcluirSubcategoria.setStyle(STYLE_BTN_DANGER);
         btnExcluirSubcategoria.setOnAction(e -> excluirSubcategoria());
         
-        painelBotoesSubcategorias.getChildren().addAll(btnEditarSubcategoria, btnExcluirSubcategoria);
+        painel.getChildren().addAll(btnEditarSubcategoria, btnExcluirSubcategoria);
+        return painel;
+    }
+    
+    /**
+     * Cria o painel de botões principais.
+     */
+    private HBox criarPainelBotoes() {
+        HBox painel = new HBox(15);
+        painel.setAlignment(Pos.CENTER_RIGHT);
+        painel.setPadding(new Insets(10, 0, 0, 0));
         
-        painel.getChildren().addAll(titulo, tabelaSubcategorias, painelNovaSubcategoria, painelBotoesSubcategorias);
+        Button btnFechar = new Button("Fechar");
+        btnFechar.setStyle(STYLE_BTN_PRIMARY);
+        btnFechar.setOnAction(e -> janela.close());
         
+        painel.getChildren().add(btnFechar);
         return painel;
     }
     
@@ -250,7 +313,7 @@ public class TelaCategorias {
         if (categoriaController.salvarCategoria(categoria)) {
             txtNovaCategoria.clear();
             
-            // IMPORTANTE: Atualizar a tabela após salvar
+            // Atualizar a tabela após salvar
             atualizarTabelaCategorias();
             
             // Selecionar a categoria recém-adicionada
@@ -285,16 +348,14 @@ public class TelaCategorias {
             categoriaSelecionada.setNome(novoNome);
             
             if (categoriaController.salvarCategoria(categoriaSelecionada)) {
-                // IMPORTANTE: Atualizar a tabela após editar
+                // Atualizar a tabela após editar
                 atualizarTabelaCategorias();
                 
                 // Selecionar novamente a categoria editada
-                for (CategoriaDespesa cat : tabelaCategorias.getItems()) {
-                    if (cat.getId() == categoriaSelecionada.getId()) {
-                        tabelaCategorias.getSelectionModel().select(cat);
-                        break;
-                    }
-                }
+                tabelaCategorias.getItems().stream()
+                    .filter(c -> c.getId() == categoriaSelecionada.getId())
+                    .findFirst()
+                    .ifPresent(c -> tabelaCategorias.getSelectionModel().select(c));
                 
                 exibirAlerta(Alert.AlertType.INFORMATION, "Sucesso", "Categoria atualizada com sucesso!");
             } else {
@@ -324,7 +385,7 @@ public class TelaCategorias {
         
         if (resultado.isPresent() && resultado.get() == ButtonType.OK) {
             if (categoriaController.excluirCategoria(categoriaSelecionada.getId())) {
-                // IMPORTANTE: Atualizar as tabelas após excluir
+                // Atualizar as tabelas após excluir
                 atualizarTabelaCategorias();
                 tabelaSubcategorias.getItems().clear();
                 
@@ -342,7 +403,8 @@ public class TelaCategorias {
         CategoriaDespesa categoriaSelecionada = tabelaCategorias.getSelectionModel().getSelectedItem();
         
         if (categoriaSelecionada == null) {
-            exibirAlerta(Alert.AlertType.WARNING, "Seleção vazia", "Por favor, selecione uma categoria antes de adicionar uma subcategoria.");
+            exibirAlerta(Alert.AlertType.WARNING, "Seleção vazia", 
+                         "Por favor, selecione uma categoria antes de adicionar uma subcategoria.");
             return;
         }
         
@@ -448,8 +510,6 @@ public class TelaCategorias {
      * Atualiza a tabela de categorias.
      */
     private void atualizarTabelaCategorias() {
-        System.out.println("Atualizando tabela de categorias...");
-        
         // Buscar categorias atualizadas
         ObservableList<CategoriaDespesa> categorias = categoriaController.listarTodasCategorias();
         
@@ -462,35 +522,20 @@ public class TelaCategorias {
         
         // Tentar restaurar a seleção
         if (categoriaIdSelecionada != -1) {
-            for (CategoriaDespesa categoria : categorias) {
-                if (categoria.getId() == categoriaIdSelecionada) {
-                    tabelaCategorias.getSelectionModel().select(categoria);
-                    break;
-                }
-            }
-        }
-        
-        // Se não houver categorias, exibir uma mensagem
-        if (categorias.isEmpty()) {
-            System.out.println("Nenhuma categoria encontrada na tabela.");
+            categorias.stream()
+                .filter(c -> c.getId() == categoriaIdSelecionada)
+                .findFirst()
+                .ifPresent(c -> tabelaCategorias.getSelectionModel().select(c));
         }
     }
     
     /**
      * Atualiza a tabela de subcategorias com base na categoria selecionada.
-     * @param categoria a categoria selecionada
      */
     private void atualizarTabelaSubcategorias(CategoriaDespesa categoria) {
         if (categoria != null) {
-            System.out.println("Atualizando subcategorias para categoria: " + categoria.getNome());
             ObservableList<SubCategoria> subcategorias = FXCollections.observableArrayList(categoria.getSubCategorias());
             tabelaSubcategorias.setItems(subcategorias);
-            
-            if (subcategorias.isEmpty()) {
-                System.out.println("Nenhuma subcategoria encontrada para esta categoria.");
-            } else {
-                System.out.println("Subcategorias encontradas: " + subcategorias.size());
-            }
         } else {
             tabelaSubcategorias.getItems().clear();
         }
@@ -498,9 +543,6 @@ public class TelaCategorias {
     
     /**
      * Exibe um alerta.
-     * @param tipo o tipo de alerta
-     * @param titulo o título do alerta
-     * @param mensagem a mensagem do alerta
      */
     private void exibirAlerta(Alert.AlertType tipo, String titulo, String mensagem) {
         Alert alerta = new Alert(tipo);
@@ -508,32 +550,5 @@ public class TelaCategorias {
         alerta.setHeaderText(null);
         alerta.setContentText(mensagem);
         alerta.showAndWait();
-    }
-    
-    /**
-     * Reseta o banco de dados (para resolução de problemas).
-     */
-    private void resetarBancoDados() {
-        Alert confirmacao = new Alert(Alert.AlertType.CONFIRMATION);
-        confirmacao.setTitle("Confirmação");
-        confirmacao.setHeaderText("Resetar Banco de Dados");
-        confirmacao.setContentText("Esta operação irá apagar TODOS os dados e recriar o banco de dados. Tem certeza que deseja continuar?");
-        
-        Optional<ButtonType> resultado = confirmacao.showAndWait();
-        
-        if (resultado.isPresent() && resultado.get() == ButtonType.OK) {
-            try {
-                // Chamar o método de reset do banco de dados
-                com.gastos.db.ConexaoBanco.resetarBancoDados();
-                
-                // Atualizar a interface
-                atualizarTabelaCategorias();
-                tabelaSubcategorias.getItems().clear();
-                
-                exibirAlerta(Alert.AlertType.INFORMATION, "Sucesso", "Banco de dados reinicializado com sucesso!");
-            } catch (Exception e) {
-                exibirAlerta(Alert.AlertType.ERROR, "Erro", "Erro ao resetar banco de dados: " + e.getMessage());
-            }
-        }
     }
 }

@@ -16,6 +16,23 @@ import java.util.List;
  */
 public class CartaoCreditoDAO {
     
+    // SQL queries como constantes para facilitar manutenção
+    private static final String SQL_INSERT = 
+            "INSERT INTO cartoes_credito (nome, bandeira, limite, dia_fechamento, dia_vencimento, cor) VALUES (?, ?, ?, ?, ?, ?)";
+    private static final String SQL_UPDATE = 
+            "UPDATE cartoes_credito SET nome = ?, bandeira = ?, limite = ?, dia_fechamento = ?, dia_vencimento = ?, cor = ? WHERE id = ?";
+    private static final String SQL_DELETE = 
+            "DELETE FROM cartoes_credito WHERE id = ?";
+    private static final String SQL_FIND_BY_ID = 
+            "SELECT * FROM cartoes_credito WHERE id = ?";
+    private static final String SQL_FIND_ALL = 
+            "SELECT * FROM cartoes_credito ORDER BY nome";
+    private static final String SQL_CALC_GASTOS_MES = 
+            "SELECT SUM(valor) as total FROM despesas " +
+            "WHERE cartao_id = ? AND " +
+            "((data_vencimento BETWEEN ? AND ?) OR " +
+            "(data_vencimento IS NULL AND data_compra BETWEEN ? AND ?))";
+    
     /**
      * Insere um novo cartão no banco de dados.
      * @param cartao o cartão a ser inserido
@@ -23,18 +40,10 @@ public class CartaoCreditoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public int inserir(CartaoCredito cartao) throws SQLException {
-        String sql = "INSERT INTO cartoes_credito (nome, bandeira, limite, dia_fechamento, dia_vencimento, cor) " +
-                     "VALUES (?, ?, ?, ?, ?, ?)";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_INSERT, Statement.RETURN_GENERATED_KEYS)) {
             
-            stmt.setString(1, cartao.getNome());
-            stmt.setString(2, cartao.getBandeira());
-            stmt.setDouble(3, cartao.getLimite());
-            stmt.setInt(4, cartao.getDiaFechamento());
-            stmt.setInt(5, cartao.getDiaVencimento());
-            stmt.setString(6, cartao.getCor());
+            preencherStatement(stmt, cartao);
             
             stmt.executeUpdate();
             
@@ -54,22 +63,29 @@ public class CartaoCreditoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void atualizar(CartaoCredito cartao) throws SQLException {
-        String sql = "UPDATE cartoes_credito SET nome = ?, bandeira = ?, limite = ?, " +
-                     "dia_fechamento = ?, dia_vencimento = ?, cor = ? WHERE id = ?";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_UPDATE)) {
             
-            stmt.setString(1, cartao.getNome());
-            stmt.setString(2, cartao.getBandeira());
-            stmt.setDouble(3, cartao.getLimite());
-            stmt.setInt(4, cartao.getDiaFechamento());
-            stmt.setInt(5, cartao.getDiaVencimento());
-            stmt.setString(6, cartao.getCor());
+            preencherStatement(stmt, cartao);
             stmt.setInt(7, cartao.getId());
             
             stmt.executeUpdate();
         }
+    }
+    
+    /**
+     * Preenche um PreparedStatement com os dados do cartão.
+     * @param stmt o PreparedStatement a ser preenchido
+     * @param cartao o cartão com os dados
+     * @throws SQLException se ocorrer um erro de SQL
+     */
+    private void preencherStatement(PreparedStatement stmt, CartaoCredito cartao) throws SQLException {
+        stmt.setString(1, cartao.getNome());
+        stmt.setString(2, cartao.getBandeira());
+        stmt.setDouble(3, cartao.getLimite());
+        stmt.setInt(4, cartao.getDiaFechamento());
+        stmt.setInt(5, cartao.getDiaVencimento());
+        stmt.setString(6, cartao.getCor());
     }
     
     /**
@@ -78,10 +94,8 @@ public class CartaoCreditoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void excluir(int id) throws SQLException {
-        String sql = "DELETE FROM cartoes_credito WHERE id = ?";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_DELETE)) {
             
             stmt.setInt(1, id);
             stmt.executeUpdate();
@@ -95,10 +109,8 @@ public class CartaoCreditoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public CartaoCredito buscarPorId(int id) throws SQLException {
-        String sql = "SELECT * FROM cartoes_credito WHERE id = ?";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_FIND_BY_ID)) {
             
             stmt.setInt(1, id);
             
@@ -119,11 +131,10 @@ public class CartaoCreditoDAO {
      */
     public List<CartaoCredito> listarTodos() throws SQLException {
         List<CartaoCredito> cartoes = new ArrayList<>();
-        String sql = "SELECT * FROM cartoes_credito ORDER BY nome";
         
         try (Connection conn = ConexaoBanco.getConexao();
              Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+             ResultSet rs = stmt.executeQuery(SQL_FIND_ALL)) {
             
             while (rs.next()) {
                 cartoes.add(construirCartao(rs));
@@ -160,18 +171,11 @@ public class CartaoCreditoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public double calcularGastosNoMes(int cartaoId) throws SQLException {
-        double total = 0.0;
-        
         LocalDate inicio = LocalDate.now().withDayOfMonth(1);
         LocalDate fim = inicio.plusMonths(1).minusDays(1);
         
-        String sql = "SELECT SUM(valor) as total FROM despesas " +
-                     "WHERE cartao_id = ? AND " +
-                     "((data_vencimento BETWEEN ? AND ?) OR " +
-                     "(data_vencimento IS NULL AND data_compra BETWEEN ? AND ?))";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_CALC_GASTOS_MES)) {
             
             stmt.setInt(1, cartaoId);
             stmt.setString(2, inicio.toString());
@@ -181,11 +185,11 @@ public class CartaoCreditoDAO {
             
             try (ResultSet rs = stmt.executeQuery()) {
                 if (rs.next() && !rs.wasNull()) {
-                    total = rs.getDouble("total");
+                    return rs.getDouble("total");
                 }
             }
         }
         
-        return total;
+        return 0.0;
     }
 }

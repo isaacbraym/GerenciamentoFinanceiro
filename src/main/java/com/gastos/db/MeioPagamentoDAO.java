@@ -15,6 +15,13 @@ import java.util.List;
  */
 public class MeioPagamentoDAO {
     
+    // SQL queries como constantes para facilitar manutenção
+    private static final String SQL_INSERT = "INSERT INTO meios_pagamento (nome, cartao_credito) VALUES (?, ?)";
+    private static final String SQL_UPDATE = "UPDATE meios_pagamento SET nome = ?, cartao_credito = ? WHERE id = ?";
+    private static final String SQL_DELETE = "DELETE FROM meios_pagamento WHERE id = ?";
+    private static final String SQL_FIND_BY_ID = "SELECT * FROM meios_pagamento WHERE id = ?";
+    private static final String SQL_FIND_ALL = "SELECT * FROM meios_pagamento ORDER BY nome";
+    
     /**
      * Insere um novo meio de pagamento no banco de dados.
      * @param meioPagamento o meio de pagamento a ser inserido
@@ -22,10 +29,8 @@ public class MeioPagamentoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public int inserir(MeioPagamento meioPagamento) throws SQLException {
-        String sql = "INSERT INTO meios_pagamento (nome, cartao_credito) VALUES (?, ?)";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_INSERT, Statement.RETURN_GENERATED_KEYS)) {
             
             stmt.setString(1, meioPagamento.getNome());
             stmt.setBoolean(2, meioPagamento.isCartaoCredito());
@@ -48,10 +53,8 @@ public class MeioPagamentoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void atualizar(MeioPagamento meioPagamento) throws SQLException {
-        String sql = "UPDATE meios_pagamento SET nome = ?, cartao_credito = ? WHERE id = ?";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_UPDATE)) {
             
             stmt.setString(1, meioPagamento.getNome());
             stmt.setBoolean(2, meioPagamento.isCartaoCredito());
@@ -67,10 +70,8 @@ public class MeioPagamentoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void excluir(int id) throws SQLException {
-        String sql = "DELETE FROM meios_pagamento WHERE id = ?";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_DELETE)) {
             
             stmt.setInt(1, id);
             stmt.executeUpdate();
@@ -84,10 +85,8 @@ public class MeioPagamentoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public MeioPagamento buscarPorId(int id) throws SQLException {
-        String sql = "SELECT * FROM meios_pagamento WHERE id = ?";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_FIND_BY_ID)) {
             
             stmt.setInt(1, id);
             
@@ -108,11 +107,10 @@ public class MeioPagamentoDAO {
      */
     public List<MeioPagamento> listarTodos() throws SQLException {
         List<MeioPagamento> meiosPagamento = new ArrayList<>();
-        String sql = "SELECT * FROM meios_pagamento ORDER BY nome";
         
         try (Connection conn = ConexaoBanco.getConexao();
              Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+             ResultSet rs = stmt.executeQuery(SQL_FIND_ALL)) {
             
             while (rs.next()) {
                 meiosPagamento.add(construirMeioPagamento(rs));

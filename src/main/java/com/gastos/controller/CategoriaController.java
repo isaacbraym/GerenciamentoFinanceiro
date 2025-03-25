@@ -6,6 +6,7 @@ import com.gastos.db.CategoriaDespesaDAO;
 import com.gastos.model.CategoriaDespesa;
 import com.gastos.model.SubCategoria;
 import javafx.collections.ObservableList;
+import javafx.collections.FXCollections;
 
 /**
  * Controlador para gerenciar as categorias de despesas no sistema.
@@ -14,21 +15,35 @@ public class CategoriaController extends BaseController<CategoriaDespesa> {
 
     private final CategoriaDespesaDAO categoriaDAO;
 
+    /**
+     * Construtor padrão.
+     */
     public CategoriaController() {
         this.categoriaDAO = new CategoriaDespesaDAO();
     }
 
-    // Método para listar todas as categorias
+    /**
+     * Lista todas as categorias do sistema.
+     * @return uma lista observável de categorias
+     */
     public ObservableList<CategoriaDespesa> listarTodasCategorias() {
         return executarOperacaoLista(categoriaDAO::listarTodas);
     }
 
-    // Método para buscar categoria pelo ID
+    /**
+     * Busca uma categoria pelo ID.
+     * @param id o ID da categoria
+     * @return a categoria encontrada ou null se não encontrar
+     */
     public CategoriaDespesa buscarCategoriaPorId(int id) {
         return executarOperacaoUnico(() -> categoriaDAO.buscarPorId(id));
     }
 
-    // Método para salvar ou atualizar categoria
+    /**
+     * Salva ou atualiza uma categoria no banco de dados.
+     * @param categoria a categoria a ser salva
+     * @return true se a operação foi bem-sucedida
+     */
     public boolean salvarCategoria(CategoriaDespesa categoria) {
         try {
             if (categoria.getId() == 0) {
@@ -44,7 +59,11 @@ public class CategoriaController extends BaseController<CategoriaDespesa> {
         }
     }
 
-    // Excluir uma categoria
+    /**
+     * Exclui uma categoria do sistema.
+     * @param id o ID da categoria a ser excluída
+     * @return true se a operação foi bem-sucedida
+     */
     public boolean excluirCategoria(int id) {
         try {
             categoriaDAO.excluir(id);
@@ -55,7 +74,12 @@ public class CategoriaController extends BaseController<CategoriaDespesa> {
         }
     }
 
-    // Adicionar uma subcategoria a uma categoria
+    /**
+     * Adiciona uma subcategoria a uma categoria.
+     * @param categoria a categoria pai
+     * @param subcategoria a subcategoria a ser adicionada
+     * @return true se a operação foi bem-sucedida
+     */
     public boolean adicionarSubcategoria(CategoriaDespesa categoria, SubCategoria subcategoria) {
         try {
             subcategoria.setCategoriaId(categoria.getId());
@@ -69,7 +93,11 @@ public class CategoriaController extends BaseController<CategoriaDespesa> {
         }
     }
 
-    // Atualizar uma subcategoria
+    /**
+     * Atualiza uma subcategoria existente.
+     * @param subcategoria a subcategoria a ser atualizada
+     * @return true se a operação foi bem-sucedida
+     */
     public boolean atualizarSubcategoria(SubCategoria subcategoria) {
         try {
             categoriaDAO.atualizarSubcategoria(subcategoria);
@@ -80,7 +108,11 @@ public class CategoriaController extends BaseController<CategoriaDespesa> {
         }
     }
 
-    // Excluir uma subcategoria
+    /**
+     * Exclui uma subcategoria do sistema.
+     * @param subcategoriaId o ID da subcategoria a ser excluída
+     * @return true se a operação foi bem-sucedida
+     */
     public boolean excluirSubcategoria(int subcategoriaId) {
         try {
             categoriaDAO.excluirSubcategoria(subcategoriaId);

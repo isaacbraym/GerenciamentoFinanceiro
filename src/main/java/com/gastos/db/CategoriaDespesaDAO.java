@@ -16,6 +16,18 @@ import java.util.List;
  */
 public class CategoriaDespesaDAO {
     
+    // SQL queries como constantes para facilitar manutenção
+    private static final String SQL_INSERT_CATEGORIA = "INSERT INTO categorias (nome) VALUES (?)";
+    private static final String SQL_UPDATE_CATEGORIA = "UPDATE categorias SET nome = ? WHERE id = ?";
+    private static final String SQL_DELETE_SUBCATEGORIAS = "DELETE FROM subcategorias WHERE categoria_id = ?";
+    private static final String SQL_DELETE_CATEGORIA = "DELETE FROM categorias WHERE id = ?";
+    private static final String SQL_FIND_CATEGORIA_BY_ID = "SELECT * FROM categorias WHERE id = ?";
+    private static final String SQL_FIND_ALL_CATEGORIAS = "SELECT * FROM categorias ORDER BY nome";
+    private static final String SQL_FIND_SUBCATEGORIAS = "SELECT * FROM subcategorias WHERE categoria_id = ? ORDER BY nome";
+    private static final String SQL_INSERT_SUBCATEGORIA = "INSERT INTO subcategorias (nome, categoria_id) VALUES (?, ?)";
+    private static final String SQL_UPDATE_SUBCATEGORIA = "UPDATE subcategorias SET nome = ?, categoria_id = ? WHERE id = ?";
+    private static final String SQL_DELETE_SUBCATEGORIA = "DELETE FROM subcategorias WHERE id = ?";
+    
     /**
      * Insere uma nova categoria no banco de dados.
      * @param categoria a categoria a ser inserida
@@ -23,20 +35,17 @@ public class CategoriaDespesaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public int inserir(CategoriaDespesa categoria) throws SQLException {
-        String sql = "INSERT INTO categorias (nome) VALUES (?)";
-        
         Connection conn = null;
         PreparedStatement stmt = null;
         ResultSet generatedKeys = null;
         
         try {
             conn = ConexaoBanco.getConexao();
-            // Garante que autocommit está ativado para essa operação
             conn.setAutoCommit(true);
             
             System.out.println("Tentando inserir categoria: " + categoria.getNome());
             
-            stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+            stmt = conn.prepareStatement(SQL_INSERT_CATEGORIA, Statement.RETURN_GENERATED_KEYS);
             stmt.setString(1, categoria.getNome());
             int affectedRows = stmt.executeUpdate();
             
@@ -56,9 +65,7 @@ public class CategoriaDespesaDAO {
                 throw new SQLException("Falha ao inserir categoria, nenhum ID foi retornado.");
             }
         } finally {
-            if (generatedKeys != null) try { generatedKeys.close(); } catch (SQLException e) { e.printStackTrace(); }
-            if (stmt != null) try { stmt.close(); } catch (SQLException e) { e.printStackTrace(); }
-            // Não fechamos a conexão aqui pois ela é gerenciada pela classe ConexaoBanco
+            fecharRecursos(generatedKeys, stmt);
         }
     }
     
@@ -68,19 +75,16 @@ public class CategoriaDespesaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void atualizar(CategoriaDespesa categoria) throws SQLException {
-        String sql = "UPDATE categorias SET nome = ? WHERE id = ?";
-        
         Connection conn = null;
         PreparedStatement stmt = null;
         
         try {
             conn = ConexaoBanco.getConexao();
-            // Garante que autocommit está ativado para essa operação
             conn.setAutoCommit(true);
             
             System.out.println("Atualizando categoria ID: " + categoria.getId() + ", Nome: " + categoria.getNome());
             
-            stmt = conn.prepareStatement(sql);
+            stmt = conn.prepareStatement(SQL_UPDATE_CATEGORIA);
             stmt.setString(1, categoria.getNome());
             stmt.setInt(2, categoria.getId());
             
@@ -91,7 +95,7 @@ public class CategoriaDespesaDAO {
                 System.out.println("AVISO: Nenhuma linha foi atualizada para o ID: " + categoria.getId());
             }
         } finally {
-            if (stmt != null) try { stmt.close(); } catch (SQLException e) { e.printStackTrace(); }
+            fecharRecursos(null, stmt);
         }
     }
     
@@ -101,12 +105,6 @@ public class CategoriaDespesaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void excluir(int id) throws SQLException {
-        // Primeiro excluir as subcategorias associadas
-        String sqlSubcategorias = "DELETE FROM subcategorias WHERE categoria_id = ?";
-        
-        // Depois excluir a categoria
-        String sqlCategoria = "DELETE FROM categorias WHERE id = ?";
-        
         Connection conn = null;
         PreparedStatement stmtSub = null;
         PreparedStatement stmtCat = null;
@@ -118,39 +116,25 @@ public class CategoriaDespesaDAO {
             System.out.println("Excluindo categoria ID: " + id);
             
             // Excluir subcategorias
-            stmtSub = conn.prepareStatement(sqlSubcategorias);
+            stmtSub = conn.prepareStatement(SQL_DELETE_SUBCATEGORIAS);
             stmtSub.setInt(1, id);
             int subRows = stmtSub.executeUpdate();
             System.out.println("Subcategorias excluídas: " + subRows);
             
             // Excluir categoria
-            stmtCat = conn.prepareStatement(sqlCategoria);
+            stmtCat = conn.prepareStatement(SQL_DELETE_CATEGORIA);
             stmtCat.setInt(1, id);
             int catRows = stmtCat.executeUpdate();
             System.out.println("Categorias excluídas: " + catRows);
             
             conn.commit(); // Confirmar transação
-            
         } catch (SQLException e) {
-            if (conn != null) {
-                try {
-                    conn.rollback(); // Reverter em caso de erro
-                    System.out.println("Transação revertida devido a erro");
-                } catch (SQLException ex) {
-                    System.err.println("Erro ao reverter transação: " + ex.getMessage());
-                }
-            }
+            realizarRollback(conn);
             throw e;
         } finally {
-            if (stmtSub != null) try { stmtSub.close(); } catch (SQLException e) { e.printStackTrace(); }
-            if (stmtCat != null) try { stmtCat.close(); } catch (SQLException e) { e.printStackTrace(); }
-            if (conn != null) {
-                try {
-                    conn.setAutoCommit(true); // Restaurar autocommit
-                } catch (SQLException ex) {
-                    System.err.println("Erro ao restaurar autocommit: " + ex.getMessage());
-                }
-            }
+            fecharRecursos(null, stmtSub);
+            fecharRecursos(null, stmtCat);
+            restaurarAutoCommit(conn);
         }
     }
     
@@ -161,15 +145,13 @@ public class CategoriaDespesaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public CategoriaDespesa buscarPorId(int id) throws SQLException {
-        String sql = "SELECT * FROM categorias WHERE id = ?";
-        
         Connection conn = null;
         PreparedStatement stmt = null;
         ResultSet rs = null;
         
         try {
             conn = ConexaoBanco.getConexao();
-            stmt = conn.prepareStatement(sql);
+            stmt = conn.prepareStatement(SQL_FIND_CATEGORIA_BY_ID);
             stmt.setInt(1, id);
             
             rs = stmt.executeQuery();
@@ -181,8 +163,7 @@ public class CategoriaDespesaDAO {
                 return null;
             }
         } finally {
-            if (rs != null) try { rs.close(); } catch (SQLException e) { e.printStackTrace(); }
-            if (stmt != null) try { stmt.close(); } catch (SQLException e) { e.printStackTrace(); }
+            fecharRecursos(rs, stmt);
         }
     }
     
@@ -193,8 +174,6 @@ public class CategoriaDespesaDAO {
      */
     public List<CategoriaDespesa> listarTodas() throws SQLException {
         List<CategoriaDespesa> categorias = new ArrayList<>();
-        String sql = "SELECT * FROM categorias ORDER BY nome";
-        
         Connection conn = null;
         Statement stmt = null;
         ResultSet rs = null;
@@ -205,7 +184,7 @@ public class CategoriaDespesaDAO {
             
             System.out.println("Buscando todas as categorias...");
             
-            rs = stmt.executeQuery(sql);
+            rs = stmt.executeQuery(SQL_FIND_ALL_CATEGORIAS);
             while (rs.next()) {
                 CategoriaDespesa categoria = construirCategoria(rs);
                 categoria.setSubCategorias(buscarSubcategorias(categoria.getId()));
@@ -217,8 +196,7 @@ public class CategoriaDespesaDAO {
             
             System.out.println("Total de categorias encontradas: " + categorias.size());
         } finally {
-            if (rs != null) try { rs.close(); } catch (SQLException e) { e.printStackTrace(); }
-            if (stmt != null) try { stmt.close(); } catch (SQLException e) { e.printStackTrace(); }
+            fecharRecursos(rs, stmt);
         }
         
         return categorias;
@@ -226,9 +204,6 @@ public class CategoriaDespesaDAO {
     
     /**
      * Constrói um objeto CategoriaDespesa a partir de um ResultSet.
-     * @param rs o ResultSet contendo os dados da categoria
-     * @return a categoria construída
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private CategoriaDespesa construirCategoria(ResultSet rs) throws SQLException {
         CategoriaDespesa categoria = new CategoriaDespesa();
@@ -241,21 +216,16 @@ public class CategoriaDespesaDAO {
     
     /**
      * Busca todas as subcategorias de uma categoria específica.
-     * @param categoriaId o ID da categoria
-     * @return a lista de subcategorias
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private List<SubCategoria> buscarSubcategorias(int categoriaId) throws SQLException {
         List<SubCategoria> subcategorias = new ArrayList<>();
-        String sql = "SELECT * FROM subcategorias WHERE categoria_id = ? ORDER BY nome";
-        
         Connection conn = null;
         PreparedStatement stmt = null;
         ResultSet rs = null;
         
         try {
             conn = ConexaoBanco.getConexao();
-            stmt = conn.prepareStatement(sql);
+            stmt = conn.prepareStatement(SQL_FIND_SUBCATEGORIAS);
             
             stmt.setInt(1, categoriaId);
             
@@ -269,8 +239,7 @@ public class CategoriaDespesaDAO {
                 subcategorias.add(subcategoria);
             }
         } finally {
-            if (rs != null) try { rs.close(); } catch (SQLException e) { e.printStackTrace(); }
-            if (stmt != null) try { stmt.close(); } catch (SQLException e) { e.printStackTrace(); }
+            fecharRecursos(rs, stmt);
         }
         
         return subcategorias;
@@ -278,26 +247,20 @@ public class CategoriaDespesaDAO {
     
     /**
      * Insere uma nova subcategoria no banco de dados.
-     * @param subcategoria a subcategoria a ser inserida
-     * @return o ID da subcategoria inserida
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public int inserirSubcategoria(SubCategoria subcategoria) throws SQLException {
-        String sql = "INSERT INTO subcategorias (nome, categoria_id) VALUES (?, ?)";
-        
         Connection conn = null;
         PreparedStatement stmt = null;
         ResultSet generatedKeys = null;
         
         try {
             conn = ConexaoBanco.getConexao();
-            // Garante que autocommit está ativado para essa operação
             conn.setAutoCommit(true);
             
             System.out.println("Inserindo subcategoria: " + subcategoria.getNome() + 
                               " na categoria ID: " + subcategoria.getCategoriaId());
             
-            stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS);
+            stmt = conn.prepareStatement(SQL_INSERT_SUBCATEGORIA, Statement.RETURN_GENERATED_KEYS);
             stmt.setString(1, subcategoria.getNome());
             stmt.setInt(2, subcategoria.getCategoriaId());
             
@@ -318,31 +281,25 @@ public class CategoriaDespesaDAO {
                 throw new SQLException("Falha ao inserir subcategoria, nenhum ID foi retornado.");
             }
         } finally {
-            if (generatedKeys != null) try { generatedKeys.close(); } catch (SQLException e) { e.printStackTrace(); }
-            if (stmt != null) try { stmt.close(); } catch (SQLException e) { e.printStackTrace(); }
+            fecharRecursos(generatedKeys, stmt);
         }
     }
     
     /**
      * Atualiza uma subcategoria existente no banco de dados.
-     * @param subcategoria a subcategoria a ser atualizada
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public void atualizarSubcategoria(SubCategoria subcategoria) throws SQLException {
-        String sql = "UPDATE subcategorias SET nome = ?, categoria_id = ? WHERE id = ?";
-        
         Connection conn = null;
         PreparedStatement stmt = null;
         
         try {
             conn = ConexaoBanco.getConexao();
-            // Garante que autocommit está ativado para essa operação
             conn.setAutoCommit(true);
             
             System.out.println("Atualizando subcategoria ID: " + subcategoria.getId() + 
                               ", Nome: " + subcategoria.getNome());
             
-            stmt = conn.prepareStatement(sql);
+            stmt = conn.prepareStatement(SQL_UPDATE_SUBCATEGORIA);
             stmt.setString(1, subcategoria.getNome());
             stmt.setInt(2, subcategoria.getCategoriaId());
             stmt.setInt(3, subcategoria.getId());
@@ -354,29 +311,24 @@ public class CategoriaDespesaDAO {
                 System.out.println("AVISO: Nenhuma linha foi atualizada para subcategoria ID: " + subcategoria.getId());
             }
         } finally {
-            if (stmt != null) try { stmt.close(); } catch (SQLException e) { e.printStackTrace(); }
+            fecharRecursos(null, stmt);
         }
     }
     
     /**
      * Exclui uma subcategoria do banco de dados.
-     * @param id o ID da subcategoria a ser excluída
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public void excluirSubcategoria(int id) throws SQLException {
-        String sql = "DELETE FROM subcategorias WHERE id = ?";
-        
         Connection conn = null;
         PreparedStatement stmt = null;
         
         try {
             conn = ConexaoBanco.getConexao();
-            // Garante que autocommit está ativado para essa operação
             conn.setAutoCommit(true);
             
             System.out.println("Excluindo subcategoria ID: " + id);
             
-            stmt = conn.prepareStatement(sql);
+            stmt = conn.prepareStatement(SQL_DELETE_SUBCATEGORIA);
             stmt.setInt(1, id);
             int affectedRows = stmt.executeUpdate();
             
@@ -386,7 +338,46 @@ public class CategoriaDespesaDAO {
                 System.out.println("AVISO: Nenhuma linha foi excluída para subcategoria ID: " + id);
             }
         } finally {
-            if (stmt != null) try { stmt.close(); } catch (SQLException e) { e.printStackTrace(); }
+            fecharRecursos(null, stmt);
+        }
+    }
+    
+    /**
+     * Realiza rollback da transação em caso de erro.
+     */
+    private void realizarRollback(Connection conn) {
+        if (conn != null) {
+            try {
+                conn.rollback();
+                System.out.println("Transação revertida devido a erro");
+            } catch (SQLException ex) {
+                System.err.println("Erro ao reverter transação: " + ex.getMessage());
+            }
+        }
+    }
+    
+    /**
+     * Restaura o modo autoCommit da conexão.
+     */
+    private void restaurarAutoCommit(Connection conn) {
+        if (conn != null) {
+            try {
+                conn.setAutoCommit(true);
+            } catch (SQLException ex) {
+                System.err.println("Erro ao restaurar autocommit: " + ex.getMessage());
+            }
+        }
+    }
+    
+    /**
+     * Fecha recursos JDBC de forma segura.
+     */
+    private void fecharRecursos(ResultSet rs, Statement stmt) {
+        if (rs != null) {
+            try { rs.close(); } catch (SQLException e) { e.printStackTrace(); }
+        }
+        if (stmt != null) {
+            try { stmt.close(); } catch (SQLException e) { e.printStackTrace(); }
         }
     }
 }

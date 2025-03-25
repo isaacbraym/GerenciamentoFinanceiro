@@ -1,13 +1,16 @@
 package com.gastos.ui;
 
 import com.gastos.GerenciadorFinanceiroApp;
-import com.gastos.controller.DespesaController;
-import com.gastos.db.ConexaoBanco;
 import com.gastos.model.Despesa;
+import com.gastos.model.Responsavel;
+import com.gastos.service.AvatarService;
+import com.gastos.service.DashboardService;
+import com.gastos.service.GraficoService;
+import com.gastos.service.NavegacaoService;
+import com.gastos.service.UIComponentFactory;
 
 import javafx.application.Application;
 import javafx.application.Platform;
-import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -18,23 +21,17 @@ import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
-import org.jfree.chart.ChartFactory;
+import javafx.scene.text.TextAlignment;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.fx.ChartViewer;
-import org.jfree.chart.plot.PiePlot;
-import org.jfree.data.general.DefaultPieDataset;
 
-import java.awt.Paint;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Classe que representa a tela principal do aplicativo.
+ * Foco na construção da interface e delegação de ações para serviços especializados.
  */
 public class TelaPrincipal {
 
@@ -43,18 +40,15 @@ public class TelaPrincipal {
     private static final String STYLE_HEADER = "-fx-background-color: #3498db;";
     private static final String STYLE_SIDEBAR = "-fx-background-color: #2c3e50;";
     private static final String STYLE_FOOTER = "-fx-background-color: #ecf0f1;";
-    private static final String STYLE_CARD_TOTAL = "-fx-background-color: #3498db; -fx-background-radius: 10;";
-    private static final String STYLE_CARD_PAGO = "-fx-background-color: #2ecc71; -fx-background-radius: 10;";
-    private static final String STYLE_CARD_A_PAGAR = "-fx-background-color: #e74c3c; -fx-background-radius: 10;";
-    private static final String STYLE_PANEL = "-fx-background-color: white; -fx-background-radius: 10;";
-    private static final String STYLE_BTN_PRIMARY = "-fx-background-color: #3498db; -fx-text-fill: white;";
-    private static final String STYLE_BTN_SUCCESS = "-fx-background-color: #2ecc71; -fx-text-fill: white;";
-    private static final String STYLE_BTN_DANGER = "-fx-background-color: #e74c3c; -fx-text-fill: white;";
-    private static final String STYLE_BTN_MENU = "-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: CENTER-LEFT;";
-    private static final String STYLE_BTN_MENU_HOVER = "-fx-background-color: #3498db; -fx-text-fill: white; -fx-alignment: CENTER-LEFT;";
 
     private Scene scene;
-    private final DespesaController despesaController;
+    
+    // Serviços
+    private final DashboardService dashboardService;
+    private final GraficoService graficoService;
+    private final UIComponentFactory uiFactory;
+    private final NavegacaoService navegacaoService;
+    private AvatarService avatarService;
 
     // Componentes da interface
     private Label lblTotalDespesasMes;
@@ -62,6 +56,16 @@ public class TelaPrincipal {
     private Label lblTotalAPagar;
     private TableView<Despesa> tabelaDespesasRecentes;
     private VBox painelGraficos;
+    private HBox avatarContainer;
+    private Label lblFiltroAtivo;
+    private Button btnLimparFiltro;
+    private Integer responsavelSelecionadoId = null;
+    
+    // Componentes do menu
+    private VBox menuLateral;
+    private VBox subMenuCadastro;
+    private boolean subMenuAberto = false;
+    private Button btnCadastrar; // Referência ao botão de cadastro para facilitar estilização
 
     /**
      * Classe estática para ponto de entrada da aplicação
@@ -76,7 +80,13 @@ public class TelaPrincipal {
      * Construtor da tela principal.
      */
     public TelaPrincipal() {
-        despesaController = new DespesaController();
+        // Inicializar serviços
+        this.dashboardService = new DashboardService();
+        this.graficoService = new GraficoService();
+        this.uiFactory = new UIComponentFactory();
+        this.navegacaoService = new NavegacaoService(this::atualizarDashboard);
+        
+        // Criar interface
         criarInterface();
     }
 
@@ -124,73 +134,85 @@ public class TelaPrincipal {
      * Cria o menu lateral da aplicação.
      */
     private VBox criarMenuLateral() {
-        VBox menuLateral = new VBox(10);
+        menuLateral = new VBox(10);
         menuLateral.setPadding(new Insets(15));
         menuLateral.setPrefWidth(200);
         menuLateral.setStyle(STYLE_SIDEBAR);
 
-        String[][] itensMenu = { 
-            { "Dashboard", "dashboard", "atualizarDashboard" },
-            { "Nova Despesa", "nova-despesa", "abrirTelaNovaDespesa" },
-            { "Categorias", "categorias", "abrirTelaCategorias" },
-            { "Despesas Fixas", "despesas-fixas", "mostrarTelaEmDesenvolvimento" },
-            { "Cartões de Crédito", "cartoes", "mostrarTelaEmDesenvolvimento" },
-            { "Parcelamentos", "parcelamentos", "abrirTelaParcelamentos" },
-            { "Relatórios", "relatorios", "mostrarTelaEmDesenvolvimento" },
-            { "Configurações", "config", "mostrarTelaEmDesenvolvimento" }
-        };
+        // Botões principais do menu
+        Button btnDashboard = uiFactory.criarBotaoMenu("Dashboard", "dashboard", e -> atualizarDashboard());
+        Button btnNovaDespesa = uiFactory.criarBotaoMenu("Nova Despesa", "nova-despesa", e -> navegacaoService.abrirTelaNovaDespesa());
+        btnCadastrar = uiFactory.criarBotaoMenu("Cadastrar", "cadastrar", e -> toggleSubMenu());
+        Button btnDespesasFixas = uiFactory.criarBotaoMenu("Despesas Fixas", "despesas-fixas", e -> navegacaoService.mostrarTelaEmDesenvolvimento());
+        Button btnParcelamentos = uiFactory.criarBotaoMenu("Parcelamentos", "parcelamentos", e -> navegacaoService.abrirTelaParcelamentos());
+        Button btnRelatorios = uiFactory.criarBotaoMenu("Relatórios", "relatorios", e -> navegacaoService.mostrarTelaEmDesenvolvimento());
+        Button btnConfiguracoes = uiFactory.criarBotaoMenu("Configurações", "config", e -> navegacaoService.mostrarTelaEmDesenvolvimento());
 
-        for (String[] item : itensMenu) {
-            Button btn = criarBotaoMenu(item[0], item[1], item[2]);
-            menuLateral.getChildren().add(btn);
-        }
+        // Criar submenu de cadastro (inicialmente oculto)
+        criarSubMenuCadastro();
+
+        // Adicionar botões principais ao menu
+        menuLateral.getChildren().addAll(
+            btnDashboard, 
+            btnNovaDespesa, 
+            btnCadastrar,
+            subMenuCadastro, // Agora adicionamos o submenu logo após o botão Cadastrar
+            btnDespesasFixas, 
+            btnParcelamentos, 
+            btnRelatorios, 
+            btnConfiguracoes
+        );
 
         return menuLateral;
     }
 
     /**
-     * Cria um botão para o menu lateral.
+     * Cria o submenu de cadastro.
      */
-    private Button criarBotaoMenu(String texto, String id, String metodo) {
-        Button botao = new Button(texto);
-        botao.setId(id);
-        botao.setMaxWidth(Double.MAX_VALUE);
-        botao.setPrefHeight(40);
-        botao.setStyle(STYLE_BTN_MENU);
-
-        // Efeito hover
-        botao.setOnMouseEntered(e -> botao.setStyle(STYLE_BTN_MENU_HOVER));
-        botao.setOnMouseExited(e -> botao.setStyle(STYLE_BTN_MENU));
-
-        // Configurar evento de clique usando reflection
-        configurarEventoBotaoMenu(botao, metodo);
-
-        return botao;
+    private void criarSubMenuCadastro() {
+        subMenuCadastro = new VBox(5);
+        subMenuCadastro.setVisible(false);
+        subMenuCadastro.setManaged(false);
+        
+        Button btnCartoes = uiFactory.criarBotaoSubMenu("Cartões", "cartoes", e -> navegacaoService.mostrarTelaEmDesenvolvimento());
+        Button btnCategorias = uiFactory.criarBotaoSubMenu("Categorias", "categorias", e -> navegacaoService.abrirTelaCategorias());
+        Button btnPessoas = uiFactory.criarBotaoSubMenu("Pessoas", "pessoas", e -> {
+            try {
+                navegacaoService.abrirTelaCadastroPessoa();
+            } catch (Exception ex) {
+                System.err.println("Erro ao abrir a tela de cadastro de pessoas: " + ex.getMessage());
+                ex.printStackTrace();
+                
+                // Exibir alerta para o usuário
+                Alert alerta = new Alert(Alert.AlertType.ERROR);
+                alerta.setTitle("Erro");
+                alerta.setHeaderText("Erro ao abrir a tela de cadastro de pessoas");
+                alerta.setContentText("Ocorreu um erro ao tentar abrir a tela: " + ex.getMessage());
+                alerta.showAndWait();
+            }
+        });
+        
+        subMenuCadastro.getChildren().addAll(btnCartoes, btnCategorias, btnPessoas);
     }
-
+    
     /**
-     * Configura o evento de clique para um botão do menu.
+     * Alterna a visibilidade do submenu.
      */
-    private void configurarEventoBotaoMenu(Button botao, String metodo) {
-        switch (metodo) {
-            case "atualizarDashboard":
-                botao.setOnAction(e -> atualizarDashboard());
-                break;
-            case "abrirTelaNovaDespesa":
-                botao.setOnAction(e -> abrirTelaNovaDespesa());
-                break;
-            case "abrirTelaCategorias":
-                botao.setOnAction(e -> abrirTelaCategorias());
-                break;
-            case "abrirTelaParcelamentos":
-                botao.setOnAction(e -> abrirTelaParcelamentos());
-                break;
-            case "mostrarTelaEmDesenvolvimento":
-                botao.setOnAction(e -> mostrarTelaEmDesenvolvimento());
-                break;
-            default:
-                // Nenhuma ação definida
-                break;
+    private void toggleSubMenu() {
+        try {
+            subMenuAberto = !subMenuAberto;
+            subMenuCadastro.setVisible(subMenuAberto);
+            subMenuCadastro.setManaged(subMenuAberto);
+            
+            // Destacar o botão quando o submenu estiver aberto
+            if (subMenuAberto) {
+                btnCadastrar.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-alignment: CENTER-LEFT;");
+            } else {
+                btnCadastrar.setStyle("-fx-background-color: transparent; -fx-text-fill: white; -fx-alignment: CENTER-LEFT;");
+            }
+        } catch (Exception e) {
+            System.err.println("Erro ao alternar visibilidade do submenu: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
@@ -201,19 +223,56 @@ public class TelaPrincipal {
         VBox painelDashboard = new VBox(20);
         painelDashboard.setPadding(new Insets(20));
 
-        // Título e data
+        // Título, data e avatares em container horizontal
+        HBox cabecalhoDashboard = new HBox();
+        cabecalhoDashboard.setAlignment(Pos.CENTER_LEFT);
+        cabecalhoDashboard.setSpacing(20);
+        
+        // Container para título e filtro ativo
+        VBox tituloContainer = new VBox(5);
+        
         Label tituloDashboard = new Label("Dashboard");
         tituloDashboard.setFont(Font.font("Arial", FontWeight.BOLD, 22));
-
-        LocalDate hoje = LocalDate.now();
-        Label dataAtual = new Label("Data: " + hoje.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
+        
+        // Informações de filtro ativo
+        HBox filtroContainer = new HBox(10);
+        filtroContainer.setAlignment(Pos.CENTER_LEFT);
+        
+        lblFiltroAtivo = new Label("Mostrando despesas de: ");
+        lblFiltroAtivo.setFont(Font.font("Arial", FontWeight.NORMAL, 14));
+        lblFiltroAtivo.setTextFill(Color.GRAY);
+        lblFiltroAtivo.setVisible(false);
+        
+        btnLimparFiltro = uiFactory.criarBotaoPerigo("Limpar Filtro", e -> limparFiltro());
+        btnLimparFiltro.setVisible(false);
+        
+        filtroContainer.getChildren().addAll(lblFiltroAtivo, btnLimparFiltro);
+        tituloContainer.getChildren().addAll(tituloDashboard, filtroContainer);
+        
+        // Container para avatares
+        avatarContainer = new HBox(15);
+        avatarContainer.setAlignment(Pos.CENTER_LEFT);
+        
+        // Inicializa o serviço de avatares
+        avatarService = new AvatarService(avatarContainer, this::selecionarResponsavel);
+        
+        // Adicionar componentes ao cabeçalho do dashboard
+        cabecalhoDashboard.getChildren().addAll(tituloContainer, avatarContainer);
+        
+        // Container para data atual
+        Label dataAtual = new Label("Data: " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
         dataAtual.setFont(Font.font("Arial", 14));
-
+        
         // Painéis principais
         HBox painelResumo = criarPainelResumoFinanceiro();
         HBox painelDespesasGraficos = criarPainelDespesasGraficos();
 
-        painelDashboard.getChildren().addAll(tituloDashboard, dataAtual, painelResumo, painelDespesasGraficos);
+        painelDashboard.getChildren().addAll(
+            cabecalhoDashboard, 
+            dataAtual,
+            painelResumo, 
+            painelDespesasGraficos
+        );
 
         ScrollPane scrollPane = new ScrollPane(painelDashboard);
         scrollPane.setFitToWidth(true);
@@ -232,40 +291,17 @@ public class TelaPrincipal {
         HBox painelResumo = new HBox(20);
         painelResumo.setAlignment(Pos.CENTER);
 
-        VBox cartaoTotalDespesas = criarCartaoResumo("Total Despesas do Mês", "R$ 0,00", STYLE_CARD_TOTAL);
+        VBox cartaoTotalDespesas = uiFactory.criarCartaoTotalDespesas("R$ 0,00");
         lblTotalDespesasMes = (Label) cartaoTotalDespesas.getChildren().get(1);
 
-        VBox cartaoTotalPago = criarCartaoResumo("Total Pago", "R$ 0,00", STYLE_CARD_PAGO);
+        VBox cartaoTotalPago = uiFactory.criarCartaoTotalPago("R$ 0,00");
         lblTotalPago = (Label) cartaoTotalPago.getChildren().get(1);
 
-        VBox cartaoTotalAPagar = criarCartaoResumo("Total a Pagar", "R$ 0,00", STYLE_CARD_A_PAGAR);
+        VBox cartaoTotalAPagar = uiFactory.criarCartaoTotalAPagar("R$ 0,00");
         lblTotalAPagar = (Label) cartaoTotalAPagar.getChildren().get(1);
 
         painelResumo.getChildren().addAll(cartaoTotalDespesas, cartaoTotalPago, cartaoTotalAPagar);
         return painelResumo;
-    }
-
-    /**
-     * Cria um cartão de resumo financeiro.
-     */
-    private VBox criarCartaoResumo(String titulo, String valor, String estilo) {
-        VBox cartao = new VBox(10);
-        cartao.setPadding(new Insets(20));
-        cartao.setPrefWidth(300);
-        cartao.setPrefHeight(150);
-        cartao.setStyle(estilo);
-        cartao.setAlignment(Pos.CENTER);
-
-        Label lblTitulo = new Label(titulo);
-        lblTitulo.setFont(Font.font("Arial", FontWeight.BOLD, 16));
-        lblTitulo.setTextFill(Color.WHITE);
-
-        Label lblValor = new Label(valor);
-        lblValor.setFont(Font.font("Arial", FontWeight.BOLD, 24));
-        lblValor.setTextFill(Color.WHITE);
-
-        cartao.getChildren().addAll(lblTitulo, lblValor);
-        return cartao;
     }
 
     /**
@@ -289,21 +325,14 @@ public class TelaPrincipal {
      * Cria o painel de despesas recentes.
      */
     private VBox criarPainelDespesasRecentes() {
-        VBox painel = new VBox(10);
-        painel.setPadding(new Insets(20));
-        painel.setStyle(STYLE_PANEL);
-
-        Label titulo = new Label("Despesas Recentes");
-        titulo.setFont(Font.font("Arial", FontWeight.BOLD, 18));
+        VBox painel = uiFactory.criarPainelComTitulo("Despesas Recentes");
 
         tabelaDespesasRecentes = new TableView<>();
         configurarTabelaDespesas();
 
-        Button btnVerTodas = new Button("Ver Todas as Despesas");
-        btnVerTodas.setStyle(STYLE_BTN_PRIMARY);
-        btnVerTodas.setOnAction(e -> abrirTelaTodasDespesas());
+        Button btnVerTodas = uiFactory.criarBotaoPrimario("Ver Todas as Despesas", e -> navegacaoService.abrirTelaTodasDespesas());
 
-        painel.getChildren().addAll(titulo, tabelaDespesasRecentes, btnVerTodas);
+        painel.getChildren().addAll(tabelaDespesasRecentes, btnVerTodas);
         return painel;
     }
 
@@ -325,6 +354,12 @@ public class TelaPrincipal {
         colunaCategoria.setCellValueFactory(cellData -> new javafx.beans.property.SimpleStringProperty(
                 cellData.getValue().getCategoria() != null ? cellData.getValue().getCategoria().getNome() : ""));
         colunaCategoria.setPrefWidth(100);
+        
+        // Nova coluna para mostrar o responsável
+        TableColumn<Despesa, String> colunaResponsavel = new TableColumn<>("Responsável");
+        colunaResponsavel.setCellValueFactory(cellData -> new javafx.beans.property.SimpleStringProperty(
+                cellData.getValue().getResponsavel() != null ? cellData.getValue().getResponsavel().getNome() : ""));
+        colunaResponsavel.setPrefWidth(100);
 
         TableColumn<Despesa, String> colunaVencimento = new TableColumn<>("Vencimento");
         colunaVencimento.setCellValueFactory(cellData -> new javafx.beans.property.SimpleStringProperty(
@@ -338,22 +373,15 @@ public class TelaPrincipal {
                 cellData.getValue().isPago() ? "Pago" : "A Pagar"));
         colunaStatus.setPrefWidth(80);
 
-        tabelaDespesasRecentes.getColumns().addAll(colunaDescricao, colunaValor, colunaCategoria, colunaVencimento,
-                colunaStatus);
+        tabelaDespesasRecentes.getColumns().addAll(colunaDescricao, colunaValor, colunaCategoria, 
+                colunaResponsavel, colunaVencimento, colunaStatus);
     }
 
     /**
      * Cria o painel de gráficos.
      */
     private VBox criarPainelGraficos() {
-        VBox painel = new VBox(20);
-        painel.setPadding(new Insets(20));
-        painel.setStyle(STYLE_PANEL);
-
-        Label titulo = new Label("Análise de Gastos");
-        titulo.setFont(Font.font("Arial", FontWeight.BOLD, 18));
-
-        painel.getChildren().add(titulo);
+        VBox painel = uiFactory.criarPainelComTitulo("Análise de Gastos");
         return painel;
     }
 
@@ -379,90 +407,30 @@ public class TelaPrincipal {
      */
     public void atualizarDashboard() {
         try {
+            // Atualizar avatares
+            avatarService.carregarAvatares();
+            
             // Atualizar os totais financeiros
-            double totalDespesas = despesaController.calcularTotalDespesasDoMes();
-            double totalPago = despesaController.calcularTotalDespesasPagasDoMes();
-            double totalAPagar = despesaController.calcularTotalDespesasAPagarDoMes();
+            double totalDespesas = dashboardService.calcularTotalDespesasDoMes(responsavelSelecionadoId);
+            double totalPago = dashboardService.calcularTotalDespesasPagasDoMes(responsavelSelecionadoId);
+            double totalAPagar = dashboardService.calcularTotalDespesasAPagarDoMes(responsavelSelecionadoId);
 
             lblTotalDespesasMes.setText(String.format("R$ %.2f", totalDespesas));
             lblTotalPago.setText(String.format("R$ %.2f", totalPago));
             lblTotalAPagar.setText(String.format("R$ %.2f", totalAPagar));
 
-            // Obter despesas recentes
-            ObservableList<Despesa> despesas = despesaController.listarDespesasDoMes();
-
-            // Se não conseguiu, buscar diretamente
-            if (despesas == null || despesas.isEmpty()) {
-                despesas = buscarDespesasDiretamente();
-            }
-
             // Atualizar a tabela
+            ObservableList<Despesa> despesas = dashboardService.obterDespesasDoMes(responsavelSelecionadoId);
             tabelaDespesasRecentes.setItems(despesas);
 
             // Atualizar os gráficos
             atualizarGraficos();
         } catch (Exception e) {
+            System.err.println("Erro ao atualizar dashboard: " + e.getMessage());
             e.printStackTrace();
         }
     }
-
-    /**
-     * Busca despesas diretamente do banco em caso de falha.
-     */
-    private ObservableList<Despesa> buscarDespesasDiretamente() {
-        List<Despesa> despesas = new ArrayList<>();
-
-        try (Connection conn = ConexaoBanco.getConexao()) {
-            String sql = "SELECT d.id, d.descricao, d.valor, d.data_compra, d.data_vencimento, d.pago, "
-                    + "c.id as categoria_id, c.nome as categoria_nome " 
-                    + "FROM despesas d "
-                    + "LEFT JOIN categorias c ON d.categoria_id = c.id " 
-                    + "ORDER BY d.id DESC LIMIT 20";
-
-            try (PreparedStatement stmt = conn.prepareStatement(sql); 
-                 ResultSet rs = stmt.executeQuery()) {
-
-                while (rs.next()) {
-                    Despesa despesa = new Despesa();
-                    despesa.setId(rs.getInt("id"));
-                    despesa.setDescricao(rs.getString("descricao"));
-                    despesa.setValor(rs.getDouble("valor"));
-
-                    // Data de compra
-                    String dataCompraStr = rs.getString("data_compra");
-                    if (dataCompraStr != null && !dataCompraStr.isEmpty()) {
-                        despesa.setDataCompra(LocalDate.parse(dataCompraStr));
-                    } else {
-                        despesa.setDataCompra(LocalDate.now());
-                    }
-
-                    // Data de vencimento (opcional)
-                    String dataVencimentoStr = rs.getString("data_vencimento");
-                    if (dataVencimentoStr != null && !dataVencimentoStr.isEmpty()) {
-                        despesa.setDataVencimento(LocalDate.parse(dataVencimentoStr));
-                    }
-
-                    despesa.setPago(rs.getBoolean("pago"));
-
-                    // Categoria básica
-                    int categoriaId = rs.getInt("categoria_id");
-                    if (!rs.wasNull()) {
-                        com.gastos.model.CategoriaDespesa categoria = new com.gastos.model.CategoriaDespesa();
-                        categoria.setId(categoriaId);
-                        categoria.setNome(rs.getString("categoria_nome"));
-                        despesa.setCategoria(categoria);
-                    }
-
-                    despesas.add(despesa);
-                }
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return FXCollections.observableArrayList(despesas);
-    }
-
+    
     /**
      * Atualiza os gráficos do dashboard.
      */
@@ -472,108 +440,52 @@ public class TelaPrincipal {
             painelGraficos.getChildren().remove(1, painelGraficos.getChildren().size());
         }
 
+        // Obter dados para o gráfico
+        List<Object[]> dadosGrafico = dashboardService.obterDadosGrafico(responsavelSelecionadoId);
+        
         // Criar gráfico de despesas por categoria
-        JFreeChart graficoCategoria = criarGraficoPizza("Despesas por Categoria",
-                despesaController.obterDadosGraficoPorCategoria());
-        ChartViewer viewerCategoria = new ChartViewer(graficoCategoria);
-        viewerCategoria.setPrefSize(450, 300);
+        String tituloGrafico = responsavelSelecionadoId != null ? 
+                "Despesas por Categoria (Filtrado)" : "Despesas por Categoria";
+        
+        ChartViewer viewerCategoria = graficoService.criarGraficoPizzaComVisualizador(
+            tituloGrafico,
+            dadosGrafico,
+            450, 300
+        );
 
         // Adicionar os gráficos ao painel
         painelGraficos.getChildren().add(viewerCategoria);
     }
-
+    
     /**
-     * Cria um gráfico de pizza com os dados fornecidos.
+     * Seleciona um responsável e filtra os dados.
+     * 
+     * @param responsavel O responsável selecionado ou null para limpar
      */
-    @SuppressWarnings("unchecked")
-    private JFreeChart criarGraficoPizza(String titulo, List<Object[]> dados) {
-        DefaultPieDataset<String> dataset = new DefaultPieDataset<>();
-
-        for (Object[] dado : dados) {
-            String categoria = (String) dado[0];
-            double valor = (double) dado[1];
-            dataset.setValue(categoria, valor);
+    private void selecionarResponsavel(Responsavel responsavel) {
+        if (responsavel == null) {
+            limparFiltro();
+            return;
         }
-
-        JFreeChart chart = ChartFactory.createPieChart(titulo, dataset, true, true, false);
-
-        // Personalizar o gráfico
-        PiePlot<String> plot = (PiePlot<String>) chart.getPlot();
-        plot.setBackgroundPaint((Paint) java.awt.Color.WHITE);
-        plot.setOutlinePaint(null);
-
-        return chart;
+        
+        // Atualizar filtro ativo
+        responsavelSelecionadoId = responsavel.getId();
+        lblFiltroAtivo.setText("Mostrando despesas de: " + responsavel.getNome());
+        lblFiltroAtivo.setVisible(true);
+        btnLimparFiltro.setVisible(true);
+        
+        // Atualizar o dashboard com o filtro
+        atualizarDashboard();
     }
-
-    // === Métodos para abrir telas secundárias ===
-
+    
     /**
-     * Abre a tela de cadastro de nova despesa.
+     * Limpa o filtro de responsável.
      */
-    private void abrirTelaNovaDespesa() {
-        TelaCadastroDespesa telaNovaDespesa = new TelaCadastroDespesa();
-        telaNovaDespesa.mostrar();
-        Platform.runLater(this::atualizarDashboard);
-    }
-
-    /**
-     * Abre a tela de gerenciamento de categorias.
-     */
-    private void abrirTelaCategorias() {
-        TelaCategorias telaCategorias = new TelaCategorias();
-        telaCategorias.mostrar();
-        Platform.runLater(this::atualizarDashboard);
-    }
-
-    /**
-     * Abre a tela de gerenciamento de parcelamentos.
-     */
-    private void abrirTelaParcelamentos() {
-        try {
-            TelaParcelamentos telaParcelamentos = new TelaParcelamentos();
-            telaParcelamentos.mostrar();
-            Platform.runLater(this::atualizarDashboard);
-        } catch (Exception e) {
-            e.printStackTrace();
-            mostrarErro("Erro ao abrir tela de parcelamentos", e.getMessage());
-        }
-    }
-
-    /**
-     * Abre a tela com todas as despesas.
-     */
-    private void abrirTelaTodasDespesas() {
-        try {
-            TelaTodasDespesas telaTodasDespesas = new TelaTodasDespesas();
-            telaTodasDespesas.mostrar();
-            Platform.runLater(this::atualizarDashboard);
-        } catch (Exception e) {
-            e.printStackTrace();
-            mostrarErro("Erro ao abrir tela de todas as despesas", e.getMessage());
-        }
-    }
-
-    // === Métodos utilitários ===
-
-    /**
-     * Mostra alerta de funcionalidade em desenvolvimento.
-     */
-    private void mostrarTelaEmDesenvolvimento() {
-        Alert alert = new Alert(Alert.AlertType.INFORMATION);
-        alert.setTitle("Em desenvolvimento");
-        alert.setHeaderText(null);
-        alert.setContentText("Esta funcionalidade está em desenvolvimento.");
-        alert.showAndWait();
-    }
-
-    /**
-     * Mostra uma mensagem de erro.
-     */
-    private void mostrarErro(String titulo, String mensagem) {
-        Alert alerta = new Alert(Alert.AlertType.ERROR);
-        alerta.setTitle("Erro");
-        alerta.setHeaderText(titulo);
-        alerta.setContentText(mensagem);
-        alerta.showAndWait();
+    private void limparFiltro() {
+        responsavelSelecionadoId = null;
+        avatarService.setResponsavelSelecionadoId(null);
+        lblFiltroAtivo.setVisible(false);
+        btnLimparFiltro.setVisible(false);
+        atualizarDashboard();
     }
 }

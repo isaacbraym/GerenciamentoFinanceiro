@@ -8,6 +8,7 @@ import javafx.collections.ObservableList;
 
 import java.sql.SQLException;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Controlador para gerenciar os meios de pagamento no sistema.
@@ -15,6 +16,9 @@ import java.util.List;
 public class MeioPagamentoController {
     private final MeioPagamentoDAO meioPagamentoDAO;
     
+    /**
+     * Construtor padrão que inicializa o DAO.
+     */
     public MeioPagamentoController() {
         this.meioPagamentoDAO = new MeioPagamentoDAO();
     }
@@ -28,8 +32,7 @@ public class MeioPagamentoController {
             List<MeioPagamento> meiosPagamento = meioPagamentoDAO.listarTodos();
             return FXCollections.observableArrayList(meiosPagamento);
         } catch (SQLException e) {
-            System.err.println("Erro ao listar meios de pagamento: " + e.getMessage());
-            e.printStackTrace();
+            registrarErro("listar meios de pagamento", e);
             return FXCollections.observableArrayList();
         }
     }
@@ -41,14 +44,13 @@ public class MeioPagamentoController {
     public ObservableList<MeioPagamento> listarCartoes() {
         try {
             List<MeioPagamento> meiosPagamento = meioPagamentoDAO.listarTodos();
-            return FXCollections.observableArrayList(
-                meiosPagamento.stream()
-                    .filter(MeioPagamento::isCartaoCredito)
-                    .toList()
-            );
+            List<MeioPagamento> cartoes = meiosPagamento.stream()
+                .filter(MeioPagamento::isCartaoCredito)
+                .collect(Collectors.toList());
+            
+            return FXCollections.observableArrayList(cartoes);
         } catch (SQLException e) {
-            System.err.println("Erro ao listar cartões: " + e.getMessage());
-            e.printStackTrace();
+            registrarErro("listar cartões", e);
             return FXCollections.observableArrayList();
         }
     }
@@ -62,8 +64,7 @@ public class MeioPagamentoController {
         try {
             return meioPagamentoDAO.buscarPorId(id);
         } catch (SQLException e) {
-            System.err.println("Erro ao buscar meio de pagamento: " + e.getMessage());
-            e.printStackTrace();
+            registrarErro("buscar meio de pagamento", e);
             return null;
         }
     }
@@ -83,8 +84,7 @@ public class MeioPagamentoController {
             }
             return true;
         } catch (SQLException e) {
-            System.err.println("Erro ao salvar meio de pagamento: " + e.getMessage());
-            e.printStackTrace();
+            registrarErro("salvar meio de pagamento", e);
             return false;
         }
     }
@@ -99,9 +99,18 @@ public class MeioPagamentoController {
             meioPagamentoDAO.excluir(id);
             return true;
         } catch (SQLException e) {
-            System.err.println("Erro ao excluir meio de pagamento: " + e.getMessage());
-            e.printStackTrace();
+            registrarErro("excluir meio de pagamento", e);
             return false;
         }
+    }
+    
+    /**
+     * Registra um erro no sistema.
+     * @param operacao a operação que falhou
+     * @param e a exceção que ocorreu
+     */
+    private void registrarErro(String operacao, SQLException e) {
+        System.err.println("Erro ao " + operacao + ": " + e.getMessage());
+        e.printStackTrace();
     }
 }

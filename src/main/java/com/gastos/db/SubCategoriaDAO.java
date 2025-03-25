@@ -15,6 +15,14 @@ import java.util.List;
  */
 public class SubCategoriaDAO {
     
+    // SQL queries como constantes para facilitar manutenção
+    private static final String SQL_INSERT = "INSERT INTO subcategorias (nome, categoria_id) VALUES (?, ?)";
+    private static final String SQL_UPDATE = "UPDATE subcategorias SET nome = ?, categoria_id = ? WHERE id = ?";
+    private static final String SQL_DELETE = "DELETE FROM subcategorias WHERE id = ?";
+    private static final String SQL_FIND_BY_ID = "SELECT * FROM subcategorias WHERE id = ?";
+    private static final String SQL_FIND_ALL = "SELECT * FROM subcategorias ORDER BY nome";
+    private static final String SQL_FIND_BY_CATEGORIA = "SELECT * FROM subcategorias WHERE categoria_id = ? ORDER BY nome";
+    
     /**
      * Insere uma nova subcategoria no banco de dados.
      * @param subCategoria a subcategoria a ser inserida
@@ -22,15 +30,17 @@ public class SubCategoriaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public int inserir(SubCategoria subCategoria) throws SQLException {
-        String sql = "INSERT INTO subcategorias (nome, categoria_id) VALUES (?, ?)";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_INSERT, Statement.RETURN_GENERATED_KEYS)) {
             
             stmt.setString(1, subCategoria.getNome());
             stmt.setInt(2, subCategoria.getCategoriaId());
             
-            stmt.executeUpdate();
+            int affectedRows = stmt.executeUpdate();
+            
+            if (affectedRows == 0) {
+                throw new SQLException("Falha ao inserir subcategoria, nenhuma linha afetada.");
+            }
             
             try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
                 if (generatedKeys.next()) {
@@ -48,10 +58,8 @@ public class SubCategoriaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void atualizar(SubCategoria subCategoria) throws SQLException {
-        String sql = "UPDATE subcategorias SET nome = ?, categoria_id = ? WHERE id = ?";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_UPDATE)) {
             
             stmt.setString(1, subCategoria.getNome());
             stmt.setInt(2, subCategoria.getCategoriaId());
@@ -67,10 +75,8 @@ public class SubCategoriaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void excluir(int id) throws SQLException {
-        String sql = "DELETE FROM subcategorias WHERE id = ?";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_DELETE)) {
             
             stmt.setInt(1, id);
             stmt.executeUpdate();
@@ -84,10 +90,8 @@ public class SubCategoriaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public SubCategoria buscarPorId(int id) throws SQLException {
-        String sql = "SELECT * FROM subcategorias WHERE id = ?";
-        
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_FIND_BY_ID)) {
             
             stmt.setInt(1, id);
             
@@ -108,11 +112,10 @@ public class SubCategoriaDAO {
      */
     public List<SubCategoria> listarTodas() throws SQLException {
         List<SubCategoria> subCategorias = new ArrayList<>();
-        String sql = "SELECT * FROM subcategorias ORDER BY nome";
         
         try (Connection conn = ConexaoBanco.getConexao();
              Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(sql)) {
+             ResultSet rs = stmt.executeQuery(SQL_FIND_ALL)) {
             
             while (rs.next()) {
                 subCategorias.add(construirSubCategoria(rs));
@@ -130,10 +133,9 @@ public class SubCategoriaDAO {
      */
     public List<SubCategoria> listarPorCategoria(int categoriaId) throws SQLException {
         List<SubCategoria> subCategorias = new ArrayList<>();
-        String sql = "SELECT * FROM subcategorias WHERE categoria_id = ? ORDER BY nome";
         
         try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(sql)) {
+             PreparedStatement stmt = conn.prepareStatement(SQL_FIND_BY_CATEGORIA)) {
             
             stmt.setInt(1, categoriaId);
             

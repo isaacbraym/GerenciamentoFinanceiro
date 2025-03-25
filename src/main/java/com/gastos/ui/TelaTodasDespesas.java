@@ -1,13 +1,13 @@
 package com.gastos.ui;
 
 import com.gastos.controller.DespesaController;
-import com.gastos.db.ConexaoBanco;
-import com.gastos.model.CategoriaDespesa;
 import com.gastos.model.Despesa;
+import com.gastos.service.DespesaFiltroService;
+import com.gastos.service.NavegacaoService;
+import com.gastos.service.UIComponentFactory;
 
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
-import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -20,43 +20,25 @@ import javafx.scene.text.FontWeight;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Optional;
-import java.util.function.Predicate;
-import java.util.stream.Collectors;
 
 /**
  * Tela para visualizar e filtrar todas as despesas.
+ * Versão refatorada utilizando serviços.
  */
 public class TelaTodasDespesas {
-    
-    // Constantes para estilos
-    private static final String STYLE_BACKGROUND = "-fx-background-color: #f5f5f5;";
-    private static final String STYLE_PANEL = "-fx-background-color: white; -fx-background-radius: 5;";
-    private static final String STYLE_BTN_PRIMARY = "-fx-background-color: #3498db; -fx-text-fill: white;";
-    private static final String STYLE_BTN_SUCCESS = "-fx-background-color: #2ecc71; -fx-text-fill: white;";
-    private static final String STYLE_BTN_DANGER = "-fx-background-color: #e74c3c; -fx-text-fill: white;";
-    private static final String STYLE_BTN_NEUTRAL = "-fx-background-color: #95a5a6; -fx-text-fill: white;";
     
     // Constante para formatação de data
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     
-    // Constante para SQL de busca de despesas
-    private static final String SQL_DESPESAS_DIRETAS = 
-            "SELECT d.id, d.descricao, d.valor, d.data_compra, d.data_vencimento, d.pago, d.fixo, " +
-            "c.id as categoria_id, c.nome as categoria_nome " +
-            "FROM despesas d " +
-            "LEFT JOIN categorias c ON d.categoria_id = c.id " +
-            "ORDER BY d.id DESC";
-    
     private final Stage janela;
-    private final DespesaController despesaController;
+    
+    // Serviços
+    private final DespesaFiltroService despesaFiltroService;
+    private final UIComponentFactory uiFactory;
+    private final NavegacaoService navegacaoService;
     
     // Componentes da interface
     private TableView<Despesa> tabelaDespesas;
@@ -70,7 +52,10 @@ public class TelaTodasDespesas {
      * Construtor da tela de todas as despesas.
      */
     public TelaTodasDespesas() {
-        this.despesaController = new DespesaController();
+        // Inicializar serviços
+        this.despesaFiltroService = new DespesaFiltroService();
+        this.uiFactory = new UIComponentFactory();
+        this.navegacaoService = new NavegacaoService(this::carregarDespesas);
         
         // Configurar a janela
         this.janela = new Stage();
@@ -99,7 +84,7 @@ public class TelaTodasDespesas {
         // Painel principal
         BorderPane painelPrincipal = new BorderPane();
         painelPrincipal.setPadding(new Insets(20));
-        painelPrincipal.setStyle(STYLE_BACKGROUND);
+        painelPrincipal.setStyle("-fx-background-color: #f5f5f5;");
         
         // Painel de filtros
         VBox painelFiltros = criarPainelFiltros();
@@ -180,9 +165,7 @@ public class TelaTodasDespesas {
         txtBusca.setPromptText("Digite para buscar por descrição");
         txtBusca.setPrefWidth(300);
         
-        Button btnFiltrar = new Button("Filtrar");
-        btnFiltrar.setStyle(STYLE_BTN_PRIMARY);
-        btnFiltrar.setOnAction(e -> filtrarDespesas());
+        Button btnFiltrar = uiFactory.criarBotaoPrimario("Filtrar", e -> filtrarDespesas());
         
         linha.getChildren().addAll(lblStatus, cmbStatus, lblBusca, txtBusca, btnFiltrar);
         
@@ -195,7 +178,7 @@ public class TelaTodasDespesas {
     private VBox criarPainelTabela() {
         VBox painel = new VBox(10);
         painel.setPadding(new Insets(10));
-        painel.setStyle(STYLE_PANEL);
+        painel.setStyle("-fx-background-color: white; -fx-background-radius: 5;");
         
         // Tabela de despesas
         tabelaDespesas = new TableView<>();
@@ -298,212 +281,42 @@ public class TelaTodasDespesas {
      * Cria o painel de botões.
      */
     private HBox criarPainelBotoes() {
-        HBox painel = new HBox(15);
-        painel.setPadding(new Insets(15, 0, 0, 0));
-        painel.setAlignment(Pos.CENTER_RIGHT);
+        Button btnNova = uiFactory.criarBotaoSucesso("Nova Despesa", e -> novaDespesa());
+        Button btnAtualizar = uiFactory.criarBotaoPrimario("Atualizar", e -> carregarDespesas());
+        Button btnFechar = uiFactory.criarBotaoPerigo("Fechar", e -> janela.close());
         
-        Button btnNova = new Button("Nova Despesa");
-        btnNova.setStyle(STYLE_BTN_SUCCESS);
-        btnNova.setOnAction(e -> novaDespesa());
-        
-        Button btnAtualizar = new Button("Atualizar");
-        btnAtualizar.setStyle(STYLE_BTN_PRIMARY);
-        btnAtualizar.setOnAction(e -> carregarDespesas());
-        
-        Button btnFechar = new Button("Fechar");
-        btnFechar.setStyle(STYLE_BTN_NEUTRAL);
-        btnFechar.setOnAction(e -> janela.close());
-        
-        painel.getChildren().addAll(btnNova, btnAtualizar, btnFechar);
-        
-        return painel;
+        return uiFactory.criarPainelBotoes(btnNova, btnAtualizar, btnFechar);
     }
     
     /**
      * Carrega todas as despesas na tabela.
      */
     private void carregarDespesas() {
-        try {
-            // Tentar primeiro com o controller
-            ObservableList<Despesa> despesas = despesaController.listarTodasDespesas();
-            
-            // Verificar se obteve algum resultado
-            if (despesas == null || despesas.isEmpty()) {
-                System.out.println("Controller não retornou despesas. Tentando acesso direto ao banco...");
-                despesas = buscarDespesasDiretamente();
-            }
-            
-            tabelaDespesas.setItems(despesas);
-            
-            System.out.println("Despesas carregadas: " + despesas.size());
-            
-            // Se ainda não tiver resultados, mostrar alerta
-            if (despesas.isEmpty()) {
-                Platform.runLater(() -> {
-                    exibirAlerta(Alert.AlertType.INFORMATION, "Sem Dados", 
-                                "Não há despesas cadastradas no sistema.");
-                });
-            }
-        } catch (Exception e) {
-            System.err.println("Erro ao carregar despesas: " + e.getMessage());
-            e.printStackTrace();
-            
-            // Em caso de falha, tentar buscar diretamente
-            ObservableList<Despesa> despesasDiretas = buscarDespesasDiretamente();
-            if (despesasDiretas != null && !despesasDiretas.isEmpty()) {
-                tabelaDespesas.setItems(despesasDiretas);
-                System.out.println("Despesas carregadas diretamente: " + despesasDiretas.size());
-            } else {
-                exibirAlerta(Alert.AlertType.ERROR, "Erro", 
-                            "Não foi possível carregar as despesas: " + e.getMessage());
-            }
-        }
-    }
-
-    /**
-     * Método alternativo para buscar despesas diretamente do banco.
-     */
-    private ObservableList<Despesa> buscarDespesasDiretamente() {
-        System.out.println("Buscando despesas diretamente do banco...");
-        List<Despesa> despesas = new ArrayList<>();
+        ObservableList<Despesa> despesas = despesaFiltroService.carregarTodasDespesas();
+        tabelaDespesas.setItems(despesas);
         
-        try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(SQL_DESPESAS_DIRETAS);
-             ResultSet rs = stmt.executeQuery()) {
-            
-            while (rs.next()) {
-                Despesa despesa = new Despesa();
-                despesa.setId(rs.getInt("id"));
-                despesa.setDescricao(rs.getString("descricao"));
-                despesa.setValor(rs.getDouble("valor"));
-                
-                // Data de compra
-                String dataCompraStr = rs.getString("data_compra");
-                if (dataCompraStr != null && !dataCompraStr.isEmpty()) {
-                    despesa.setDataCompra(LocalDate.parse(dataCompraStr));
-                } else {
-                    despesa.setDataCompra(LocalDate.now());
-                }
-                
-                // Data de vencimento (opcional)
-                String dataVencimentoStr = rs.getString("data_vencimento");
-                if (dataVencimentoStr != null && !dataVencimentoStr.isEmpty()) {
-                    despesa.setDataVencimento(LocalDate.parse(dataVencimentoStr));
-                }
-                
-                despesa.setPago(rs.getBoolean("pago"));
-                despesa.setFixo(rs.getBoolean("fixo"));
-                
-                // Categoria básica
-                int categoriaId = rs.getInt("categoria_id");
-                if (!rs.wasNull() && categoriaId > 0) {
-                    CategoriaDespesa categoria = new CategoriaDespesa();
-                    categoria.setId(categoriaId);
-                    categoria.setNome(rs.getString("categoria_nome"));
-                    despesa.setCategoria(categoria);
-                }
-                
-                despesas.add(despesa);
-            }
-            
-            System.out.println("Total despesas carregadas diretamente: " + despesas.size());
-            
-        } catch (Exception e) {
-            System.err.println("Erro ao buscar despesas diretamente: " + e.getMessage());
-            e.printStackTrace();
+        // Se não tiver resultados, mostrar alerta
+        if (despesas.isEmpty()) {
+            Platform.runLater(() -> {
+                exibirAlerta(Alert.AlertType.INFORMATION, "Sem Dados", 
+                            "Não há despesas cadastradas no sistema.");
+            });
         }
-        
-        return FXCollections.observableArrayList(despesas);
     }
     
     /**
      * Filtra as despesas conforme os critérios selecionados.
      */
     private void filtrarDespesas() {
-        try {
-            ObservableList<Despesa> todasDespesas = despesaController.listarTodasDespesas();
-            
-            // Se não houver dados pelo controller, buscar diretamente
-            if (todasDespesas == null || todasDespesas.isEmpty()) {
-                todasDespesas = buscarDespesasDiretamente();
-            }
-            
-            // Criar uma lista de predicados para aplicar os filtros
-            List<Predicate<Despesa>> filtros = new ArrayList<>();
-            
-            // Filtro de data
-            if (dpDataInicio.getValue() != null && dpDataFim.getValue() != null) {
-                LocalDate dataInicio = dpDataInicio.getValue();
-                LocalDate dataFim = dpDataFim.getValue();
-                
-                filtros.add(despesa -> {
-                    LocalDate dataCompra = despesa.getDataCompra();
-                    LocalDate dataVencimento = despesa.getDataVencimento();
-                    
-                    boolean dentroDataCompra = 
-                            !dataCompra.isBefore(dataInicio) && !dataCompra.isAfter(dataFim);
-                            
-                    boolean dentroDataVencimento = dataVencimento != null && 
-                            !dataVencimento.isBefore(dataInicio) && 
-                            !dataVencimento.isAfter(dataFim);
-                            
-                    return dentroDataCompra || dentroDataVencimento;
-                });
-            }
-            
-            // Filtro de tipo
-            if (!cmbTipo.getValue().equals("Todos")) {
-                switch (cmbTipo.getValue()) {
-                    case "Normal":
-                        filtros.add(despesa -> !despesa.isFixo() && !despesa.isParcelada());
-                        break;
-                    case "Fixa":
-                        filtros.add(Despesa::isFixo);
-                        break;
-                    case "Parcelada":
-                        filtros.add(Despesa::isParcelada);
-                        break;
-                }
-            }
-            
-            // Filtro de status
-            if (!cmbStatus.getValue().equals("Todos")) {
-                boolean statusPago = cmbStatus.getValue().equals("Pago");
-                filtros.add(despesa -> despesa.isPago() == statusPago);
-            }
-            
-            // Filtro de busca
-            String termoBusca = txtBusca.getText().toLowerCase().trim();
-            if (!termoBusca.isEmpty()) {
-                filtros.add(despesa -> {
-                    boolean encontrouDescricao = despesa.getDescricao().toLowerCase().contains(termoBusca);
-                    boolean encontrouCategoria = despesa.getCategoria() != null && 
-                            despesa.getCategoria().getNome().toLowerCase().contains(termoBusca);
-                            
-                    return encontrouDescricao || encontrouCategoria;
-                });
-            }
-            
-            // Aplicar todos os filtros
-            Predicate<Despesa> filtroComposto = filtros.stream()
-                    .reduce(Predicate::and)
-                    .orElse(d -> true); // Se não houver filtros, aceita tudo
-                    
-            List<Despesa> despesasFiltradas = todasDespesas.stream()
-                    .filter(filtroComposto)
-                    .collect(Collectors.toList());
-            
-            // Atualizar a tabela com as despesas filtradas
-            tabelaDespesas.setItems(FXCollections.observableArrayList(despesasFiltradas));
-            
-            System.out.println("Despesas filtradas: " + despesasFiltradas.size());
-            
-        } catch (Exception e) {
-            System.err.println("Erro ao filtrar despesas: " + e.getMessage());
-            e.printStackTrace();
-            exibirAlerta(Alert.AlertType.ERROR, "Erro", 
-                        "Ocorreu um erro ao filtrar as despesas: " + e.getMessage());
-        }
+        ObservableList<Despesa> despesasFiltradas = despesaFiltroService.filtrarDespesas(
+            dpDataInicio.getValue(),
+            dpDataFim.getValue(),
+            cmbTipo.getValue(),
+            cmbStatus.getValue(),
+            txtBusca.getText()
+        );
+        
+        tabelaDespesas.setItems(despesasFiltradas);
     }
     
     /**
@@ -562,7 +375,7 @@ public class TelaTodasDespesas {
             Optional<ButtonType> resultado = confirmacao.showAndWait();
             
             if (resultado.isPresent() && resultado.get() == ButtonType.OK) {
-                if (despesaController.excluirDespesa(despesaSelecionada.getId())) {
+                if (despesaFiltroService.excluirDespesa(despesaSelecionada.getId())) {
                     carregarDespesas();
                     exibirAlerta(Alert.AlertType.INFORMATION, "Sucesso", "Despesa excluída com sucesso!");
                 } else {
@@ -597,12 +410,9 @@ public class TelaTodasDespesas {
             Optional<ButtonType> resultado = confirmacao.showAndWait();
             
             if (resultado.isPresent() && resultado.get() == ButtonType.OK) {
-                // Alterar o status da despesa
-                despesaSelecionada.setPago(paga);
-                
-                // Salvar a despesa atualizada
+                // Alterar o status da despesa usando o serviço
                 DespesaController.Resultado resultadoSalvar = 
-                    despesaController.salvarDespesa(despesaSelecionada);
+                    despesaFiltroService.marcarStatusPagamento(despesaSelecionada, paga);
                 
                 if (resultadoSalvar.isSucesso()) {
                     carregarDespesas();

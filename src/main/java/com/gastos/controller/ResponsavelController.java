@@ -6,14 +6,16 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 
 import java.sql.SQLException;
-import java.util.List;
 
 /**
  * Controlador para gerenciar os responsáveis no sistema.
  */
-public class ResponsavelController {
+public class ResponsavelController extends BaseController<Responsavel> {
     private final ResponsavelDAO responsavelDAO;
     
+    /**
+     * Construtor padrão que inicializa o DAO.
+     */
     public ResponsavelController() {
         this.responsavelDAO = new ResponsavelDAO();
     }
@@ -23,14 +25,7 @@ public class ResponsavelController {
      * @return uma lista observável de responsáveis
      */
     public ObservableList<Responsavel> listarTodosResponsaveis() {
-        try {
-            List<Responsavel> responsaveis = responsavelDAO.listarTodos();
-            return FXCollections.observableArrayList(responsaveis);
-        } catch (SQLException e) {
-            System.err.println("Erro ao listar responsáveis: " + e.getMessage());
-            e.printStackTrace();
-            return FXCollections.observableArrayList();
-        }
+        return executarOperacaoLista(responsavelDAO::listarTodos);
     }
     
     /**
@@ -39,13 +34,7 @@ public class ResponsavelController {
      * @return o responsável encontrado ou null se não encontrar
      */
     public Responsavel buscarResponsavelPorId(int id) {
-        try {
-            return responsavelDAO.buscarPorId(id);
-        } catch (SQLException e) {
-            System.err.println("Erro ao buscar responsável: " + e.getMessage());
-            e.printStackTrace();
-            return null;
-        }
+        return executarOperacaoUnico(() -> responsavelDAO.buscarPorId(id));
     }
     
     /**
@@ -63,8 +52,7 @@ public class ResponsavelController {
             }
             return true;
         } catch (SQLException e) {
-            System.err.println("Erro ao salvar responsável: " + e.getMessage());
-            e.printStackTrace();
+            logErro(e);
             return false;
         }
     }
@@ -79,8 +67,7 @@ public class ResponsavelController {
             responsavelDAO.excluir(id);
             return true;
         } catch (SQLException e) {
-            System.err.println("Erro ao excluir responsável: " + e.getMessage());
-            e.printStackTrace();
+            logErro(e);
             return false;
         }
     }

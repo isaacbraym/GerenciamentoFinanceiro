@@ -121,8 +121,6 @@ public class ParcelamentoDAO {
     
     /**
      * Valida os dados do parcelamento antes de inserir/atualizar.
-     * @param parcelamento o parcelamento a ser validado
-     * @throws SQLException se o parcelamento for inválido
      */
     private void validarParcelamento(Parcelamento parcelamento) throws SQLException {
         if (parcelamento.getTotalParcelas() <= 0) {
@@ -144,10 +142,6 @@ public class ParcelamentoDAO {
     
     /**
      * Insere uma nova parcela no banco de dados.
-     * @param conn a conexão com o banco de dados
-     * @param parcela a parcela a ser inserida
-     * @param parcelamentoId o ID do parcelamento associado
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private void inserirParcela(Connection conn, Parcela parcela, int parcelamentoId) throws SQLException {
         // Validar dados da parcela
@@ -183,8 +177,6 @@ public class ParcelamentoDAO {
     
     /**
      * Atualiza um parcelamento existente no banco de dados.
-     * @param parcelamento o parcelamento a ser atualizado
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public void atualizar(Parcelamento parcelamento) throws SQLException {
         validarParcelamento(parcelamento);
@@ -235,9 +227,6 @@ public class ParcelamentoDAO {
     
     /**
      * Exclui as parcelas de um parcelamento.
-     * @param conn a conexão com o banco de dados
-     * @param parcelamentoId o ID do parcelamento
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private void excluirParcelas(Connection conn, int parcelamentoId) throws SQLException {
         try (PreparedStatement stmt = conn.prepareStatement(SQL_DELETE_PARCELAS)) {
@@ -248,8 +237,6 @@ public class ParcelamentoDAO {
     
     /**
      * Exclui um parcelamento do banco de dados.
-     * @param id o ID do parcelamento a ser excluído
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public void excluir(int id) throws SQLException {
         Connection conn = null;
@@ -280,9 +267,6 @@ public class ParcelamentoDAO {
     
     /**
      * Busca um parcelamento pelo ID.
-     * @param id o ID do parcelamento a ser buscado
-     * @return o parcelamento encontrado ou null se não encontrar
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public Parcelamento buscarPorId(int id) throws SQLException {
         try (Connection conn = ConexaoBanco.getConexao();
@@ -304,8 +288,6 @@ public class ParcelamentoDAO {
     
     /**
      * Lista todos os parcelamentos do banco de dados.
-     * @return a lista de parcelamentos
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public List<Parcelamento> listarTodos() throws SQLException {
         List<Parcelamento> parcelamentos = new ArrayList<>();
@@ -326,8 +308,6 @@ public class ParcelamentoDAO {
     
     /**
      * Lista os parcelamentos ativos (que ainda têm parcelas a pagar).
-     * @return a lista de parcelamentos ativos
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public List<Parcelamento> listarParcelamentosAtivos() throws SQLException {
         List<Parcelamento> parcelamentos = new ArrayList<>();
@@ -348,9 +328,6 @@ public class ParcelamentoDAO {
     
     /**
      * Busca as parcelas de um parcelamento.
-     * @param parcelamentoId o ID do parcelamento
-     * @return a lista de parcelas do parcelamento
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private List<Parcela> buscarParcelas(int parcelamentoId) throws SQLException {
         List<Parcela> parcelas = new ArrayList<>();
@@ -374,9 +351,6 @@ public class ParcelamentoDAO {
     
     /**
      * Constrói um objeto Parcela a partir de um ResultSet.
-     * @param rs o ResultSet contendo os dados da parcela
-     * @return a parcela construída
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private Parcela construirParcela(ResultSet rs) throws SQLException {
         Parcela parcela = new Parcela();
@@ -396,9 +370,6 @@ public class ParcelamentoDAO {
     
     /**
      * Constrói um objeto Parcelamento a partir de um ResultSet.
-     * @param rs o ResultSet contendo os dados do parcelamento
-     * @return o parcelamento construído
-     * @throws SQLException se ocorrer um erro de SQL
      */
     private Parcelamento construirParcelamento(ResultSet rs) throws SQLException {
         Parcelamento parcelamento = new Parcelamento();
@@ -420,9 +391,6 @@ public class ParcelamentoDAO {
     
     /**
      * Atualiza o status de pagamento de uma parcela.
-     * @param parcelaId o ID da parcela
-     * @param paga o novo status de pagamento
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public void marcarParcelaPaga(int parcelaId, boolean paga) throws SQLException {
         try (Connection conn = ConexaoBanco.getConexao();
@@ -445,9 +413,6 @@ public class ParcelamentoDAO {
     
     /**
      * Busca o ID do parcelamento associado a uma parcela.
-     * @param parcelaId o ID da parcela
-     * @return o ID do parcelamento ou -1 se não encontrado
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public int buscarParcelamentoIdDaParcela(int parcelaId) throws SQLException {
         try (Connection conn = ConexaoBanco.getConexao();
@@ -467,8 +432,6 @@ public class ParcelamentoDAO {
     
     /**
      * Atualiza o número de parcelas restantes do parcelamento.
-     * @param parcelamentoId o ID do parcelamento
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public void atualizarParcelasRestantes(int parcelamentoId) throws SQLException {
         try (Connection conn = ConexaoBanco.getConexao()) {
@@ -497,8 +460,6 @@ public class ParcelamentoDAO {
     
     /**
      * Busca as parcelas a vencer no próximo mês.
-     * @return a lista de parcelas a vencer
-     * @throws SQLException se ocorrer um erro de SQL
      */
     public List<Parcela> buscarParcelasAVencer() throws SQLException {
         List<Parcela> parcelas = new ArrayList<>();
@@ -527,7 +488,6 @@ public class ParcelamentoDAO {
     
     /**
      * Realiza rollback da transação em caso de erro.
-     * @param conn a conexão com o banco de dados
      */
     private void realizarRollback(Connection conn) {
         if (conn != null) {
@@ -541,8 +501,6 @@ public class ParcelamentoDAO {
     
     /**
      * Restaura o modo autoCommit da conexão.
-     * @param conn a conexão com o banco de dados
-     * @param originalAutoCommit o valor original de autoCommit
      */
     private void restaurarAutoCommit(Connection conn, boolean originalAutoCommit) {
         if (conn != null) {
@@ -556,8 +514,6 @@ public class ParcelamentoDAO {
     
     /**
      * Fecha recursos JDBC de forma segura.
-     * @param rs o ResultSet a ser fechado
-     * @param stmt o Statement a ser fechado
      */
     private void fecharRecursos(ResultSet rs, Statement stmt) {
         if (rs != null) {
