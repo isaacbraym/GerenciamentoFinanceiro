@@ -6,43 +6,29 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 
 import com.gastos.db.ConexaoBanco;
+import com.gastos.ui.base.BaseTelaModal;
 
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Scene;
-import javafx.scene.control.Alert;
-import javafx.scene.control.Button;
-import javafx.scene.control.ButtonType;
-import javafx.scene.control.ContextMenu;
-import javafx.scene.control.Label;
-import javafx.scene.control.MenuItem;
-import javafx.scene.control.SplitPane;
-import javafx.scene.control.TableColumn;
-import javafx.scene.control.TableView;
-import javafx.scene.control.cell.PropertyValueFactory;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.VBox;
+import javafx.scene.Node;
+import javafx.scene.control.*;
+import javafx.scene.control.Alert.AlertType;
+import javafx.scene.layout.*;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
-import javafx.stage.Modality;
-import javafx.stage.Stage;
 
 /**
  * Tela para gerenciar parcelamentos.
+ * Refatorada para usar BaseTelaModal.
  */
-public class TelaParcelamentos {
-    
-    // Constantes para estilos
-    private static final String STYLE_BACKGROUND = "-fx-background-color: #f5f5f5;";
-    private static final String STYLE_PANEL = "-fx-background-color: white; -fx-background-radius: 5;";
-    private static final String STYLE_BTN_SUCCESS = "-fx-background-color: #2ecc71; -fx-text-fill: white;";
-    private static final String STYLE_BTN_DANGER = "-fx-background-color: #e74c3c; -fx-text-fill: white;";
+public class TelaParcelamentos extends BaseTelaModal {
     
     // Constantes para SQL
     private static final String SQL_LOAD_PARCELAMENTOS = 
@@ -70,8 +56,6 @@ public class TelaParcelamentos {
     private static final String SQL_UPDATE_PARCELAS_RESTANTES = 
             "UPDATE parcelamentos SET parcelas_restantes = ? WHERE id = ?";
     
-    private final Stage janela;
-    
     // Componentes da interface
     private TableView<ParcelamentoInfo> tabelaParcelamentos;
     private TableView<ParcelaInfo> tabelaParcelas;
@@ -80,41 +64,17 @@ public class TelaParcelamentos {
      * Construtor da tela de parcelamentos.
      */
     public TelaParcelamentos() {
-        // Configurar a janela
-        this.janela = new Stage();
-        janela.initModality(Modality.APPLICATION_MODAL);
-        janela.setTitle("Gerenciar Parcelamentos");
-        janela.setMinWidth(900);
-        janela.setMinHeight(600);
+        super("Gerenciar Parcelamentos", 900, 600);
         
-        // Criar a interface
-        criarInterface();
-    }
-    
-    /**
-     * Exibe a janela.
-     */
-    public void mostrar() {
         // Carregar dados
         carregarParcelamentos();
-        janela.showAndWait();
     }
     
     /**
-     * Cria a interface da tela.
+     * Cria o conteúdo principal (área central do BorderPane).
      */
-    private void criarInterface() {
-        // Painel principal
-        BorderPane painelPrincipal = new BorderPane();
-        painelPrincipal.setPadding(new Insets(20));
-        painelPrincipal.setStyle(STYLE_BACKGROUND);
-        
-        // Título
-        Label lblTitulo = new Label("Gerenciamento de Parcelamentos");
-        lblTitulo.setFont(Font.font("Arial", FontWeight.BOLD, 18));
-        painelPrincipal.setTop(lblTitulo);
-        BorderPane.setMargin(lblTitulo, new Insets(0, 0, 15, 0));
-        
+    @Override
+    protected Node criarConteudoPrincipal() {
         // Painel central com tabelas
         SplitPane painelCentral = new SplitPane();
         
@@ -126,15 +86,19 @@ public class TelaParcelamentos {
         
         painelCentral.getItems().addAll(painelParcelamentos, painelParcelas);
         painelCentral.setDividerPositions(0.6);
-        painelPrincipal.setCenter(painelCentral);
         
-        // Botões de ação
-        HBox painelBotoes = criarPainelBotoes();
-        painelPrincipal.setBottom(painelBotoes);
+        return painelCentral;
+    }
+    
+    /**
+     * Cria o painel de botões (área inferior do BorderPane).
+     */
+    @Override
+    protected Node criarPainelBotoes() {
+        Button btnAtualizar = uiFactory.criarBotaoSucesso("Atualizar", e -> carregarParcelamentos());
+        Button btnFechar = uiFactory.criarBotaoPerigo("Fechar", e -> fechar());
         
-        // Criar cena e configurar a janela
-        Scene cena = new Scene(painelPrincipal, 900, 600);
-        janela.setScene(cena);
+        return uiFactory.criarPainelBotoes(btnAtualizar, btnFechar);
     }
     
     /**
@@ -143,7 +107,7 @@ public class TelaParcelamentos {
     private VBox criarPainelParcelamentos() {
         VBox painel = new VBox(10);
         painel.setPadding(new Insets(10));
-        painel.setStyle(STYLE_PANEL);
+        painel.setStyle("-fx-background-color: white; -fx-background-radius: 5;");
         
         // Título do painel
         Label titulo = new Label("Parcelamentos");
@@ -155,28 +119,28 @@ public class TelaParcelamentos {
         
         // Configurar colunas
         TableColumn<ParcelamentoInfo, String> colunaDescricao = new TableColumn<>("Descrição");
-        colunaDescricao.setCellValueFactory(new PropertyValueFactory<>("descricao"));
+        colunaDescricao.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(data.getValue().getDescricao()));
         colunaDescricao.setPrefWidth(200);
         
         TableColumn<ParcelamentoInfo, String> colunaValorTotal = new TableColumn<>("Valor Total");
-        colunaValorTotal.setCellValueFactory(new PropertyValueFactory<>("valorTotal"));
+        colunaValorTotal.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(data.getValue().getValorTotal()));
         colunaValorTotal.setPrefWidth(100);
         
         TableColumn<ParcelamentoInfo, String> colunaParcelas = new TableColumn<>("Parcelas");
-        colunaParcelas.setCellValueFactory(new PropertyValueFactory<>("parcelas"));
+        colunaParcelas.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(data.getValue().getParcelas()));
         colunaParcelas.setPrefWidth(100);
         
         TableColumn<ParcelamentoInfo, String> colunaRestantes = new TableColumn<>("Restantes");
-        colunaRestantes.setCellValueFactory(new PropertyValueFactory<>("restantes"));
+        colunaRestantes.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(data.getValue().getRestantes()));
         colunaRestantes.setPrefWidth(80);
         
         TableColumn<ParcelamentoInfo, String> colunaStatus = new TableColumn<>("Status");
-        colunaStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
+        colunaStatus.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(data.getValue().getStatus()));
         colunaStatus.setPrefWidth(100);
         
         // Adicionar colunas à tabela
         tabelaParcelamentos.getColumns().addAll(colunaDescricao, colunaValorTotal, 
-                                              colunaParcelas, colunaRestantes, colunaStatus);
+                                               colunaParcelas, colunaRestantes, colunaStatus);
         
         // Adicionar listener para seleção
         tabelaParcelamentos.getSelectionModel().selectedItemProperty().addListener(
@@ -199,7 +163,7 @@ public class TelaParcelamentos {
     private VBox criarPainelParcelas() {
         VBox painel = new VBox(10);
         painel.setPadding(new Insets(10));
-        painel.setStyle(STYLE_PANEL);
+        painel.setStyle("-fx-background-color: white; -fx-background-radius: 5;");
         
         // Título do painel
         Label titulo = new Label("Parcelas");
@@ -211,19 +175,19 @@ public class TelaParcelamentos {
         
         // Configurar colunas
         TableColumn<ParcelaInfo, String> colunaNumeroParcela = new TableColumn<>("Nº");
-        colunaNumeroParcela.setCellValueFactory(new PropertyValueFactory<>("numeroParcela"));
+        colunaNumeroParcela.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(data.getValue().getNumeroParcela()));
         colunaNumeroParcela.setPrefWidth(50);
         
         TableColumn<ParcelaInfo, String> colunaValor = new TableColumn<>("Valor");
-        colunaValor.setCellValueFactory(new PropertyValueFactory<>("valor"));
+        colunaValor.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(data.getValue().getValor()));
         colunaValor.setPrefWidth(100);
         
         TableColumn<ParcelaInfo, String> colunaVencimento = new TableColumn<>("Vencimento");
-        colunaVencimento.setCellValueFactory(new PropertyValueFactory<>("vencimento"));
+        colunaVencimento.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(data.getValue().getVencimento()));
         colunaVencimento.setPrefWidth(100);
         
         TableColumn<ParcelaInfo, String> colunaStatus = new TableColumn<>("Status");
-        colunaStatus.setCellValueFactory(new PropertyValueFactory<>("status"));
+        colunaStatus.setCellValueFactory(data -> new javafx.beans.property.SimpleStringProperty(data.getValue().getStatus()));
         colunaStatus.setPrefWidth(100);
         
         // Adicionar colunas à tabela
@@ -243,27 +207,6 @@ public class TelaParcelamentos {
         tabelaParcelas.setContextMenu(menuContexto);
         
         painel.getChildren().addAll(titulo, tabelaParcelas);
-        
-        return painel;
-    }
-    
-    /**
-     * Cria o painel de botões.
-     */
-    private HBox criarPainelBotoes() {
-        HBox painel = new HBox(15);
-        painel.setPadding(new Insets(15, 0, 0, 0));
-        painel.setAlignment(Pos.CENTER_RIGHT);
-        
-        Button btnAtualizar = new Button("Atualizar");
-        btnAtualizar.setStyle(STYLE_BTN_SUCCESS);
-        btnAtualizar.setOnAction(e -> carregarParcelamentos());
-        
-        Button btnFechar = new Button("Fechar");
-        btnFechar.setStyle(STYLE_BTN_DANGER);
-        btnFechar.setOnAction(e -> janela.close());
-        
-        painel.getChildren().addAll(btnAtualizar, btnFechar);
         
         return painel;
     }
@@ -398,17 +341,18 @@ public class TelaParcelamentos {
         ParcelaInfo parcelaSelecionada = tabelaParcelas.getSelectionModel().getSelectedItem();
         
         if (parcelaSelecionada == null) {
-            exibirAlerta(Alert.AlertType.WARNING, "Seleção Vazia", 
-                        "Por favor, selecione uma parcela para alterar o status.");
+            exibirAviso("Seleção Vazia", 
+                      "Por favor, selecione uma parcela para alterar o status.");
             return;
         }
         
         // Confirmar operação
-        Alert confirmacao = new Alert(Alert.AlertType.CONFIRMATION);
+        Alert confirmacao = new Alert(AlertType.CONFIRMATION);
         confirmacao.setTitle("Confirmação");
         confirmacao.setHeaderText("Alterar Status da Parcela");
         confirmacao.setContentText("Deseja marcar a parcela " + parcelaSelecionada.getNumeroParcela() + 
                                   " como " + (paga ? "PAGA" : "NÃO PAGA") + "?");
+        confirmacao.initOwner(stage);
         
         Optional<ButtonType> resultado = confirmacao.showAndWait();
         
@@ -431,7 +375,7 @@ public class TelaParcelamentos {
                     carregarParcelamentos(); // Atualizar também a lista de parcelamentos
                 }
                 
-                exibirAlerta(Alert.AlertType.INFORMATION, "Sucesso", "Parcela atualizada com sucesso!");
+                exibirInformacao("Sucesso", "Parcela atualizada com sucesso!");
                 
             } catch (SQLException e) {
                 exibirErro("Erro ao atualizar parcela", e.getMessage());
@@ -479,24 +423,6 @@ public class TelaParcelamentos {
             stmt.setInt(2, parcelamentoId);
             stmt.executeUpdate();
         }
-    }
-    
-    /**
-     * Exibe um alerta.
-     */
-    private void exibirAlerta(Alert.AlertType tipo, String titulo, String mensagem) {
-        Alert alerta = new Alert(tipo);
-        alerta.setTitle(titulo);
-        alerta.setHeaderText(null);
-        alerta.setContentText(mensagem);
-        alerta.showAndWait();
-    }
-    
-    /**
-     * Exibe um erro.
-     */
-    private void exibirErro(String titulo, String mensagem) {
-        exibirAlerta(Alert.AlertType.ERROR, titulo, mensagem);
     }
     
     /**

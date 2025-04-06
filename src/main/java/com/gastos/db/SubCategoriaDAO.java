@@ -1,17 +1,17 @@
 package com.gastos.db;
 
+import com.gastos.db.util.DAOTemplate;
+import com.gastos.db.util.RowMapper;
 import com.gastos.model.SubCategoria;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Classe DAO (Data Access Object) para a entidade SubCategoria.
+ * Refatorada para usar DAOTemplate.
  */
 public class SubCategoriaDAO {
     
@@ -23,6 +23,17 @@ public class SubCategoriaDAO {
     private static final String SQL_FIND_ALL = "SELECT * FROM subcategorias ORDER BY nome";
     private static final String SQL_FIND_BY_CATEGORIA = "SELECT * FROM subcategorias WHERE categoria_id = ? ORDER BY nome";
     
+    private final DAOTemplate daoTemplate;
+    private final RowMapper<SubCategoria> rowMapper;
+    
+    /**
+     * Construtor padrão que inicializa o DAOTemplate e o RowMapper.
+     */
+    public SubCategoriaDAO() {
+        this.daoTemplate = new DAOTemplate();
+        this.rowMapper = this::construirSubCategoria;
+    }
+    
     /**
      * Insere uma nova subcategoria no banco de dados.
      * @param subCategoria a subcategoria a ser inserida
@@ -30,26 +41,13 @@ public class SubCategoriaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public int inserir(SubCategoria subCategoria) throws SQLException {
-        try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(SQL_INSERT, Statement.RETURN_GENERATED_KEYS)) {
-            
-            stmt.setString(1, subCategoria.getNome());
-            stmt.setInt(2, subCategoria.getCategoriaId());
-            
-            int affectedRows = stmt.executeUpdate();
-            
-            if (affectedRows == 0) {
-                throw new SQLException("Falha ao inserir subcategoria, nenhuma linha afetada.");
-            }
-            
-            try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
-                if (generatedKeys.next()) {
-                    return generatedKeys.getInt(1);
-                } else {
-                    throw new SQLException("Falha ao inserir subcategoria, nenhum ID foi retornado.");
-                }
-            }
-        }
+        Optional<Integer> id = daoTemplate.inserirEObterChave(
+            SQL_INSERT, 
+            subCategoria.getNome(), 
+            subCategoria.getCategoriaId()
+        );
+        
+        return id.orElseThrow(() -> new SQLException("Falha ao inserir subcategoria, nenhum ID foi retornado."));
     }
     
     /**
@@ -58,15 +56,12 @@ public class SubCategoriaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void atualizar(SubCategoria subCategoria) throws SQLException {
-        try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(SQL_UPDATE)) {
-            
-            stmt.setString(1, subCategoria.getNome());
-            stmt.setInt(2, subCategoria.getCategoriaId());
-            stmt.setInt(3, subCategoria.getId());
-            
-            stmt.executeUpdate();
-        }
+        daoTemplate.executarUpdate(
+            SQL_UPDATE, 
+            subCategoria.getNome(), 
+            subCategoria.getCategoriaId(), 
+            subCategoria.getId()
+        );
     }
     
     /**
@@ -75,12 +70,7 @@ public class SubCategoriaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void excluir(int id) throws SQLException {
-        try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(SQL_DELETE)) {
-            
-            stmt.setInt(1, id);
-            stmt.executeUpdate();
-        }
+        daoTemplate.executarUpdate(SQL_DELETE, id);
     }
     
     /**
@@ -90,19 +80,8 @@ public class SubCategoriaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public SubCategoria buscarPorId(int id) throws SQLException {
-        try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(SQL_FIND_BY_ID)) {
-            
-            stmt.setInt(1, id);
-            
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return construirSubCategoria(rs);
-                } else {
-                    return null;
-                }
-            }
-        }
+        Optional<SubCategoria> subCategoria = daoTemplate.buscar(SQL_FIND_BY_ID, rowMapper, id);
+        return subCategoria.orElse(null);
     }
     
     /**
@@ -111,18 +90,7 @@ public class SubCategoriaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public List<SubCategoria> listarTodas() throws SQLException {
-        List<SubCategoria> subCategorias = new ArrayList<>();
-        
-        try (Connection conn = ConexaoBanco.getConexao();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(SQL_FIND_ALL)) {
-            
-            while (rs.next()) {
-                subCategorias.add(construirSubCategoria(rs));
-            }
-        }
-        
-        return subCategorias;
+        return daoTemplate.listar(SQL_FIND_ALL, rowMapper);
     }
     
     /**
@@ -132,21 +100,7 @@ public class SubCategoriaDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public List<SubCategoria> listarPorCategoria(int categoriaId) throws SQLException {
-        List<SubCategoria> subCategorias = new ArrayList<>();
-        
-        try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(SQL_FIND_BY_CATEGORIA)) {
-            
-            stmt.setInt(1, categoriaId);
-            
-            try (ResultSet rs = stmt.executeQuery()) {
-                while (rs.next()) {
-                    subCategorias.add(construirSubCategoria(rs));
-                }
-            }
-        }
-        
-        return subCategorias;
+        return daoTemplate.listar(SQL_FIND_BY_CATEGORIA, rowMapper, categoriaId);
     }
     
     /**

@@ -1,11 +1,14 @@
 package com.gastos.controller;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import com.gastos.db.ConexaoBanco;
 import com.gastos.db.DespesaDAO;
 import com.gastos.model.Despesa;
 import com.gastos.model.Parcelamento.Parcela;
@@ -151,6 +154,20 @@ public class DespesaController {
      */
     public boolean excluirDespesa(int id) {
         try {
+            // Verificar primeiro se a despesa tem parcelamento
+            Despesa despesa = buscarDespesaPorId(id);
+            if (despesa != null && despesa.getParcelamento() != null) {
+                // Definir o ID do parcelamento como null na despesa antes de excluí-la
+                // para evitar problemas com restrições de chave estrangeira
+                String updateSQL = "UPDATE despesas SET parcelamento_id = NULL WHERE id = ?";
+                try (Connection conn = ConexaoBanco.getConexao();
+                     PreparedStatement stmt = conn.prepareStatement(updateSQL)) {
+                    stmt.setInt(1, id);
+                    stmt.executeUpdate();
+                }
+            }
+            
+            // Agora podemos excluir a despesa com segurança
             despesaDAO.excluir(id);
             return true;
         } catch (SQLException e) {

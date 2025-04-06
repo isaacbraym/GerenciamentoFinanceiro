@@ -2,17 +2,17 @@ package com.gastos.ui;
 
 import com.gastos.controller.*;
 import com.gastos.model.*;
+import com.gastos.ui.base.BaseTelaModal;
+
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Scene;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
-import javafx.stage.Modality;
-import javafx.stage.Stage;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -20,23 +20,19 @@ import java.util.List;
 
 /**
  * Classe que representa a tela de cadastro de despesas.
+ * Refatorada para usar BaseTelaModal.
  */
-public class TelaCadastroDespesa {
-    // Constantes para estilo
-    private static final String STYLE_FORM_BACKGROUND = "-fx-background-color: white; -fx-background-radius: 5;";
-    private static final String STYLE_BTN_CANCELAR = "-fx-background-color: #e74c3c; -fx-text-fill: white;";
-    private static final String STYLE_BTN_SALVAR = "-fx-background-color: #2ecc71; -fx-text-fill: white;";
+public class TelaCadastroDespesa extends BaseTelaModal {
     
-    private final Stage janela;
     private final Despesa despesaAtual;
     private final boolean modoEdicao;
 
     // Controllers
-    private final DespesaController despesaController = new DespesaController();
-    private final CategoriaController categoriaController = new CategoriaController();
-    private final ResponsavelController responsavelController = new ResponsavelController();
-    private final MeioPagamentoController meioPagamentoController = new MeioPagamentoController();
-    private final CartaoCreditoController cartaoController = new CartaoCreditoController();
+    private final DespesaController despesaController;
+    private final CategoriaController categoriaController;
+    private final ResponsavelController responsavelController;
+    private final MeioPagamentoController meioPagamentoController;
+    private final CartaoCreditoController cartaoController;
 
     // Componentes da interface
     private TextField txtDescricao, txtValor;
@@ -65,78 +61,38 @@ public class TelaCadastroDespesa {
      * @param edicao Flag indicando modo de edição
      */
     public TelaCadastroDespesa(Despesa despesa, boolean edicao) {
+        super(edicao ? "Editar Despesa" : "Nova Despesa", 600, 700);
         this.despesaAtual = despesa;
         this.modoEdicao = edicao;
+        
+        // Inicializar controllers
+        this.despesaController = new DespesaController();
+        this.categoriaController = new CategoriaController();
+        this.responsavelController = new ResponsavelController();
+        this.meioPagamentoController = new MeioPagamentoController();
+        this.cartaoController = new CartaoCreditoController();
 
-        // Configurar a janela
-        this.janela = new Stage();
-        janela.initModality(Modality.APPLICATION_MODAL);
-        janela.setTitle(modoEdicao ? "Editar Despesa" : "Nova Despesa");
-        janela.setMinWidth(600);
-        janela.setMinHeight(700);
-
-        criarInterface();
-    }
-
-    /**
-     * Exibe a janela e aguarda sua finalização.
-     */
-    public void mostrar() {
-        janela.showAndWait();
-    }
-
-    /**
-     * Cria a interface do formulário de cadastro.
-     */
-    private void criarInterface() {
-        // Painel principal
-        VBox painelPrincipal = new VBox(20);
-        painelPrincipal.setPadding(new Insets(20));
-        painelPrincipal.setStyle("-fx-background-color: #f5f5f5;");
-
-        // Título
-        Label lblTitulo = new Label(modoEdicao ? "Editar Despesa" : "Nova Despesa");
-        lblTitulo.setFont(Font.font("Arial", FontWeight.BOLD, 20));
-
-        // Formulário
-        GridPane formulario = criarFormulario();
-
-        // Botões de ação
-        HBox painelBotoes = new HBox(15);
-        painelBotoes.setAlignment(Pos.CENTER_RIGHT);
-
-        Button btnCancelar = new Button("Cancelar");
-        btnCancelar.setStyle(STYLE_BTN_CANCELAR);
-        btnCancelar.setOnAction(e -> janela.close());
-
-        Button btnSalvar = new Button("Salvar");
-        btnSalvar.setStyle(STYLE_BTN_SALVAR);
-        btnSalvar.setOnAction(e -> salvarDespesa());
-
-        painelBotoes.getChildren().addAll(btnCancelar, btnSalvar);
-
-        // Adicionar componentes ao painel principal
-        painelPrincipal.getChildren().addAll(lblTitulo, formulario, painelBotoes);
-
-        // Criar cena e configurar a janela
-        Scene cena = new Scene(painelPrincipal);
-        janela.setScene(cena);
-
-        // Carregar dados para edição
+        // Carregar dados após a interface ser criada
+        carregarDadosCombos();
+        configurarEventos();
+        controlarVisibilidadeVencimento();
+        
         if (modoEdicao) {
             carregarDadosParaEdicao();
         }
     }
 
     /**
-     * Cria o formulário de cadastro.
+     * Cria o conteúdo principal.
      */
-    private GridPane criarFormulario() {
+    @Override
+    protected Node criarConteudoPrincipal() {
+        // Criar o formulário de cadastro
         GridPane grid = new GridPane();
         grid.setVgap(15);
         grid.setHgap(15);
         grid.setPadding(new Insets(20));
-        grid.setStyle(STYLE_FORM_BACKGROUND);
+        grid.setStyle("-fx-background-color: white; -fx-background-radius: 5;");
 
         int row = 0;
         
@@ -170,9 +126,6 @@ public class TelaCadastroDespesa {
         
         painelStatusPagamento.getChildren().addAll(chkPago, lblVencimento, datePickerVencimento);
         grid.add(painelStatusPagamento, 1, row++);
-
-        // Evento para controlar a visibilidade da data de vencimento
-        chkPago.setOnAction(e -> controlarVisibilidadeVencimento());
 
         // Despesa Fixa
         grid.add(new Label("Tipo:"), 0, row);
@@ -214,17 +167,29 @@ public class TelaCadastroDespesa {
         // Painel de Parcelamento
         criarPainelParcelamento();
         grid.add(painelParcelamento, 1, row++);
-
-        // Carregar dados nos comboboxes
-        carregarDadosCombos();
         
-        // Configurar eventos
-        configurarEventos();
-        
-        // Configurar visibilidade inicial
-        controlarVisibilidadeVencimento();
-
         return grid;
+    }
+
+    /**
+     * Cria o painel de botões.
+     */
+    @Override
+    protected Node criarPainelBotoes() {
+        HBox painelBotoes = new HBox(15);
+        painelBotoes.setAlignment(Pos.CENTER_RIGHT);
+        painelBotoes.setPadding(new Insets(15, 0, 0, 0));
+
+        Button btnCancelar = new Button("Cancelar");
+        btnCancelar.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white;");
+        btnCancelar.setOnAction(e -> fechar());
+
+        Button btnSalvar = new Button("Salvar");
+        btnSalvar.setStyle("-fx-background-color: #2ecc71; -fx-text-fill: white;");
+        btnSalvar.setOnAction(e -> salvarDespesa());
+
+        painelBotoes.getChildren().addAll(btnCancelar, btnSalvar);
+        return painelBotoes;
     }
     
     /**
@@ -294,6 +259,9 @@ public class TelaCadastroDespesa {
             }
         });
 
+        // Evento para controlar a visibilidade da data de vencimento
+        chkPago.setOnAction(e -> controlarVisibilidadeVencimento());
+        
         // Atualizar valor da parcela quando cartão muda
         cmbCartao.setOnAction(e -> {
             if (chkParcelado.isSelected()) {
@@ -312,7 +280,7 @@ public class TelaCadastroDespesa {
         // Atualizar valor parcela quando parcelas mudam
         spinnerParcelas.valueProperty().addListener((obs, oldVal, newVal) -> atualizarValorParcela());
     }
-
+    
     /**
      * Atualiza o valor de cada parcela.
      */
@@ -350,7 +318,7 @@ public class TelaCadastroDespesa {
         cmbCategoria.setItems(categorias);
 
         if (categorias.isEmpty()) {
-            exibirAlerta(Alert.AlertType.WARNING, "Dados Faltando", "Nenhuma categoria encontrada no banco de dados.");
+            exibirAviso("Dados Faltando", "Nenhuma categoria encontrada no banco de dados.");
         }
     }
 
@@ -473,14 +441,14 @@ public class TelaCadastroDespesa {
             DespesaController.Resultado resultado = despesaController.salvarDespesa(despesaAtual);
 
             if (resultado.isSucesso()) {
-                exibirAlerta(Alert.AlertType.INFORMATION, "Sucesso", resultado.getMensagem());
-                janela.close();
+                exibirInformacao("Sucesso", resultado.getMensagem());
+                fechar();
             } else {
                 exibirErroDetalhado("Erro ao Salvar Despesa", resultado.getMensagem());
             }
         } catch (Exception e) {
             e.printStackTrace();
-            exibirAlerta(Alert.AlertType.ERROR, "Erro", "Ocorreu um erro inesperado: " + e.getMessage());
+            exibirErro("Erro", "Ocorreu um erro inesperado: " + e.getMessage());
         }
     }
     
@@ -576,30 +544,13 @@ public class TelaCadastroDespesa {
     }
 
     /**
-     * Exibe um alerta simples.
-     */
-    private void exibirAlerta(Alert.AlertType tipo, String titulo, String mensagem) {
-        Alert alerta = new Alert(tipo);
-        alerta.setTitle(titulo);
-        alerta.setHeaderText(null);
-        alerta.setContentText(mensagem);
-        alerta.showAndWait();
-    }
-    
-    /**
-     * Exibe um alerta de erro.
-     */
-    private void exibirErro(String titulo, String mensagem) {
-        exibirAlerta(Alert.AlertType.ERROR, titulo, mensagem);
-    }
-
-    /**
      * Exibe um erro detalhado com área de texto.
      */
     private void exibirErroDetalhado(String titulo, String mensagem) {
         Alert alerta = new Alert(Alert.AlertType.ERROR);
         alerta.setTitle(titulo);
         alerta.setHeaderText("Ocorreu um erro ao salvar a despesa");
+        alerta.initOwner(stage);
 
         TextArea textArea = new TextArea(mensagem);
         textArea.setEditable(false);

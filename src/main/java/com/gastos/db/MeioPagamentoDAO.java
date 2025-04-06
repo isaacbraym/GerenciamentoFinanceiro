@@ -1,17 +1,17 @@
 package com.gastos.db;
 
+import com.gastos.db.util.DAOTemplate;
+import com.gastos.db.util.RowMapper;
 import com.gastos.model.MeioPagamento;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * Classe DAO (Data Access Object) para a entidade MeioPagamento.
+ * Refatorada para usar DAOTemplate.
  */
 public class MeioPagamentoDAO {
     
@@ -22,6 +22,17 @@ public class MeioPagamentoDAO {
     private static final String SQL_FIND_BY_ID = "SELECT * FROM meios_pagamento WHERE id = ?";
     private static final String SQL_FIND_ALL = "SELECT * FROM meios_pagamento ORDER BY nome";
     
+    private final DAOTemplate daoTemplate;
+    private final RowMapper<MeioPagamento> rowMapper;
+    
+    /**
+     * Construtor padrão que inicializa o DAOTemplate e o RowMapper.
+     */
+    public MeioPagamentoDAO() {
+        this.daoTemplate = new DAOTemplate();
+        this.rowMapper = this::construirMeioPagamento;
+    }
+    
     /**
      * Insere um novo meio de pagamento no banco de dados.
      * @param meioPagamento o meio de pagamento a ser inserido
@@ -29,22 +40,13 @@ public class MeioPagamentoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public int inserir(MeioPagamento meioPagamento) throws SQLException {
-        try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(SQL_INSERT, Statement.RETURN_GENERATED_KEYS)) {
-            
-            stmt.setString(1, meioPagamento.getNome());
-            stmt.setBoolean(2, meioPagamento.isCartaoCredito());
-            
-            stmt.executeUpdate();
-            
-            try (ResultSet generatedKeys = stmt.getGeneratedKeys()) {
-                if (generatedKeys.next()) {
-                    return generatedKeys.getInt(1);
-                } else {
-                    throw new SQLException("Falha ao inserir meio de pagamento, nenhum ID foi retornado.");
-                }
-            }
-        }
+        Optional<Integer> id = daoTemplate.inserirEObterChave(
+            SQL_INSERT, 
+            meioPagamento.getNome(), 
+            meioPagamento.isCartaoCredito()
+        );
+        
+        return id.orElseThrow(() -> new SQLException("Falha ao inserir meio de pagamento, nenhum ID foi retornado."));
     }
     
     /**
@@ -53,15 +55,12 @@ public class MeioPagamentoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void atualizar(MeioPagamento meioPagamento) throws SQLException {
-        try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(SQL_UPDATE)) {
-            
-            stmt.setString(1, meioPagamento.getNome());
-            stmt.setBoolean(2, meioPagamento.isCartaoCredito());
-            stmt.setInt(3, meioPagamento.getId());
-            
-            stmt.executeUpdate();
-        }
+        daoTemplate.executarUpdate(
+            SQL_UPDATE, 
+            meioPagamento.getNome(), 
+            meioPagamento.isCartaoCredito(), 
+            meioPagamento.getId()
+        );
     }
     
     /**
@@ -70,12 +69,7 @@ public class MeioPagamentoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public void excluir(int id) throws SQLException {
-        try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(SQL_DELETE)) {
-            
-            stmt.setInt(1, id);
-            stmt.executeUpdate();
-        }
+        daoTemplate.executarUpdate(SQL_DELETE, id);
     }
     
     /**
@@ -85,19 +79,8 @@ public class MeioPagamentoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public MeioPagamento buscarPorId(int id) throws SQLException {
-        try (Connection conn = ConexaoBanco.getConexao();
-             PreparedStatement stmt = conn.prepareStatement(SQL_FIND_BY_ID)) {
-            
-            stmt.setInt(1, id);
-            
-            try (ResultSet rs = stmt.executeQuery()) {
-                if (rs.next()) {
-                    return construirMeioPagamento(rs);
-                } else {
-                    return null;
-                }
-            }
-        }
+        Optional<MeioPagamento> meioPagamento = daoTemplate.buscar(SQL_FIND_BY_ID, rowMapper, id);
+        return meioPagamento.orElse(null);
     }
     
     /**
@@ -106,18 +89,7 @@ public class MeioPagamentoDAO {
      * @throws SQLException se ocorrer um erro de SQL
      */
     public List<MeioPagamento> listarTodos() throws SQLException {
-        List<MeioPagamento> meiosPagamento = new ArrayList<>();
-        
-        try (Connection conn = ConexaoBanco.getConexao();
-             Statement stmt = conn.createStatement();
-             ResultSet rs = stmt.executeQuery(SQL_FIND_ALL)) {
-            
-            while (rs.next()) {
-                meiosPagamento.add(construirMeioPagamento(rs));
-            }
-        }
-        
-        return meiosPagamento;
+        return daoTemplate.listar(SQL_FIND_ALL, rowMapper);
     }
     
     /**

@@ -3,42 +3,39 @@ package com.gastos.ui;
 import com.gastos.controller.DespesaController;
 import com.gastos.model.Despesa;
 import com.gastos.service.DespesaFiltroService;
-import com.gastos.service.NavegacaoService;
-import com.gastos.service.UIComponentFactory;
+import com.gastos.ui.base.BaseTelaModal;
+import com.gastos.db.ConexaoBanco;
 
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Scene;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.layout.*;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
-import javafx.stage.Modality;
-import javafx.stage.Stage;
 
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.Optional;
 
 /**
  * Tela para visualizar e filtrar todas as despesas.
- * Versão refatorada utilizando serviços.
+ * Refatorada para usar BaseTelaModal.
  */
-public class TelaTodasDespesas {
+public class TelaTodasDespesas extends BaseTelaModal {
     
     // Constante para formatação de data
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
     
-    private final Stage janela;
-    
     // Serviços
     private final DespesaFiltroService despesaFiltroService;
-    private final UIComponentFactory uiFactory;
-    private final NavegacaoService navegacaoService;
     
     // Componentes da interface
     private TableView<Despesa> tabelaDespesas;
@@ -52,55 +49,45 @@ public class TelaTodasDespesas {
      * Construtor da tela de todas as despesas.
      */
     public TelaTodasDespesas() {
+        // Chamar o construtor da classe base
+        super("Todas as Despesas", 900, 600);
+        
         // Inicializar serviços
         this.despesaFiltroService = new DespesaFiltroService();
-        this.uiFactory = new UIComponentFactory();
-        this.navegacaoService = new NavegacaoService(this::carregarDespesas);
         
-        // Configurar a janela
-        this.janela = new Stage();
-        janela.initModality(Modality.APPLICATION_MODAL);
-        janela.setTitle("Todas as Despesas");
-        janela.setMinWidth(900);
-        janela.setMinHeight(600);
-        
-        // Criar a interface
-        criarInterface();
-    }
-    
-    /**
-     * Exibe a janela.
-     */
-    public void mostrar() {
-        // Carregar as despesas antes de mostrar a janela
+        // Carregar as despesas
         carregarDespesas();
-        janela.showAndWait();
     }
     
     /**
-     * Cria a interface da tela.
+     * Cria o conteúdo principal (área central do BorderPane).
      */
-    private void criarInterface() {
-        // Painel principal
-        BorderPane painelPrincipal = new BorderPane();
-        painelPrincipal.setPadding(new Insets(20));
-        painelPrincipal.setStyle("-fx-background-color: #f5f5f5;");
+    @Override
+    protected Node criarConteudoPrincipal() {
+        VBox painelPrincipal = new VBox(20);
         
         // Painel de filtros
         VBox painelFiltros = criarPainelFiltros();
-        painelPrincipal.setTop(painelFiltros);
         
         // Tabela de despesas
         VBox painelTabela = criarPainelTabela();
-        painelPrincipal.setCenter(painelTabela);
         
-        // Botões de ação
-        HBox painelBotoes = criarPainelBotoes();
-        painelPrincipal.setBottom(painelBotoes);
+        painelPrincipal.getChildren().addAll(painelFiltros, painelTabela);
+        return painelPrincipal;
+    }
+    
+    /**
+     * Cria o painel de botões (área inferior do BorderPane).
+     */
+    @Override
+    protected Node criarPainelBotoes() {
+        Button btnNova = uiFactory.criarBotaoSucesso("Nova Despesa", e -> novaDespesa());
+        Button btnEditar = uiFactory.criarBotaoPrimario("Editar Despesa", e -> editarDespesa());
+        Button btnExcluir = uiFactory.criarBotaoPerigo("Excluir Despesa", e -> excluirDespesa());
+        Button btnAtualizar = uiFactory.criarBotaoPrimario("Atualizar", e -> carregarDespesas());
+        Button btnFechar = uiFactory.criarBotaoPerigo("Fechar", e -> fechar());
         
-        // Criar cena e configurar a janela
-        Scene cena = new Scene(painelPrincipal, 900, 600);
-        janela.setScene(cena);
+        return uiFactory.criarPainelBotoes(btnNova, btnEditar, btnExcluir, btnAtualizar, btnFechar);
     }
     
     /**
@@ -186,10 +173,23 @@ public class TelaTodasDespesas {
         
         configurarColunas();
         configurarMenuContexto();
+        configurarEventosTabela();
         
         painel.getChildren().add(tabelaDespesas);
         
         return painel;
+    }
+    
+    /**
+     * Configura eventos adicionais para a tabela.
+     */
+    private void configurarEventosTabela() {
+        // Adicionar evento de duplo clique para editar
+        tabelaDespesas.setOnMouseClicked(event -> {
+            if (event.getClickCount() == 2) {
+                editarDespesa();
+            }
+        });
     }
     
     /**
@@ -278,17 +278,6 @@ public class TelaTodasDespesas {
     }
     
     /**
-     * Cria o painel de botões.
-     */
-    private HBox criarPainelBotoes() {
-        Button btnNova = uiFactory.criarBotaoSucesso("Nova Despesa", e -> novaDespesa());
-        Button btnAtualizar = uiFactory.criarBotaoPrimario("Atualizar", e -> carregarDespesas());
-        Button btnFechar = uiFactory.criarBotaoPerigo("Fechar", e -> janela.close());
-        
-        return uiFactory.criarPainelBotoes(btnNova, btnAtualizar, btnFechar);
-    }
-    
-    /**
      * Carrega todas as despesas na tabela.
      */
     private void carregarDespesas() {
@@ -298,8 +287,7 @@ public class TelaTodasDespesas {
         // Se não tiver resultados, mostrar alerta
         if (despesas.isEmpty()) {
             Platform.runLater(() -> {
-                exibirAlerta(Alert.AlertType.INFORMATION, "Sem Dados", 
-                            "Não há despesas cadastradas no sistema.");
+                exibirInformacao("Sem Dados", "Não há despesas cadastradas no sistema.");
             });
         }
     }
@@ -352,16 +340,12 @@ public class TelaTodasDespesas {
         Despesa despesaSelecionada = tabelaDespesas.getSelectionModel().getSelectedItem();
         
         if (despesaSelecionada == null) {
-            exibirAlerta(Alert.AlertType.WARNING, "Seleção Vazia", 
-                        "Por favor, selecione uma despesa para continuar.");
+            exibirAviso("Seleção Vazia", "Por favor, selecione uma despesa para continuar.");
         }
         
         return despesaSelecionada;
     }
     
-    /**
-     * Exclui a despesa selecionada.
-     */
     private void excluirDespesa() {
         Despesa despesaSelecionada = obterDespesaSelecionada();
         
@@ -370,19 +354,60 @@ public class TelaTodasDespesas {
             confirmacao.setTitle("Confirmação");
             confirmacao.setHeaderText("Excluir Despesa");
             confirmacao.setContentText("Tem certeza que deseja excluir a despesa '" + 
-                                       despesaSelecionada.getDescricao() + "'?");
+                                      despesaSelecionada.getDescricao() + "'?");
+            
+            confirmacao.initOwner(stage);
             
             Optional<ButtonType> resultado = confirmacao.showAndWait();
             
             if (resultado.isPresent() && resultado.get() == ButtonType.OK) {
-                if (despesaFiltroService.excluirDespesa(despesaSelecionada.getId())) {
-                    carregarDespesas();
-                    exibirAlerta(Alert.AlertType.INFORMATION, "Sucesso", "Despesa excluída com sucesso!");
-                } else {
-                    exibirAlerta(Alert.AlertType.ERROR, "Erro", 
-                                "Erro ao excluir a despesa. Por favor, tente novamente.");
+                try {
+                    // Removemos a chamada ao método excluirParcelamentoDaDespesa
+                    // Deixamos que o DAO cuide de tudo em uma única transação
+                    
+                    boolean sucesso = despesaFiltroService.excluirDespesa(despesaSelecionada.getId());
+                    
+                    if (sucesso) {
+                        carregarDespesas();
+                        exibirInformacao("Sucesso", "Despesa excluída com sucesso!");
+                    } else {
+                        exibirErro("Erro", "Erro ao excluir a despesa. Por favor, tente novamente.");
+                    }
+                } catch (Exception e) {
+                    exibirErro("Erro", "Erro ao excluir a despesa: " + e.getMessage());
+                    e.printStackTrace();
                 }
             }
+        }
+    }
+    
+    /**
+     * Exclui o parcelamento associado a uma despesa.
+     * Este método deve ser chamado antes de excluir a despesa.
+     */
+    private void excluirParcelamentoDaDespesa(Despesa despesa) {
+        try {
+            if (despesa.getParcelamento() != null && despesa.getParcelamento().getId() > 0) {
+                // Executar SQL para excluir as parcelas primeiro
+                try (Connection conn = ConexaoBanco.getConexao()) {
+                    // 1. Excluir parcelas
+                    String sqlDeleteParcelas = "DELETE FROM parcelas WHERE parcelamento_id = ?";
+                    try (PreparedStatement stmt = conn.prepareStatement(sqlDeleteParcelas)) {
+                        stmt.setInt(1, despesa.getParcelamento().getId());
+                        stmt.executeUpdate();
+                    }
+                    
+                    // 2. Excluir o parcelamento
+                    String sqlDeleteParcelamento = "DELETE FROM parcelamentos WHERE id = ?";
+                    try (PreparedStatement stmt = conn.prepareStatement(sqlDeleteParcelamento)) {
+                        stmt.setInt(1, despesa.getParcelamento().getId());
+                        stmt.executeUpdate();
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            System.err.println("Erro ao excluir parcelamento: " + e.getMessage());
+            throw new RuntimeException("Falha ao excluir o parcelamento associado à despesa", e);
         }
     }
     
@@ -395,8 +420,8 @@ public class TelaTodasDespesas {
         if (despesaSelecionada != null) {
             // Se já está no estado desejado, não fazer nada
             if (despesaSelecionada.isPago() == paga) {
-                exibirAlerta(Alert.AlertType.INFORMATION, "Informação", 
-                            "A despesa já está marcada como " + (paga ? "paga." : "não paga."));
+                exibirInformacao("Informação", 
+                               "A despesa já está marcada como " + (paga ? "paga." : "não paga."));
                 return;
             }
             
@@ -406,6 +431,7 @@ public class TelaTodasDespesas {
             confirmacao.setHeaderText("Alterar Status da Despesa");
             confirmacao.setContentText("Deseja marcar a despesa '" + despesaSelecionada.getDescricao() + 
                                        "' como " + (paga ? "PAGA" : "NÃO PAGA") + "?");
+            confirmacao.initOwner(stage);
             
             Optional<ButtonType> resultado = confirmacao.showAndWait();
             
@@ -416,25 +442,12 @@ public class TelaTodasDespesas {
                 
                 if (resultadoSalvar.isSucesso()) {
                     carregarDespesas();
-                    exibirAlerta(Alert.AlertType.INFORMATION, "Sucesso", 
-                                "Status da despesa alterado com sucesso!");
+                    exibirInformacao("Sucesso", "Status da despesa alterado com sucesso!");
                 } else {
-                    exibirAlerta(Alert.AlertType.ERROR, "Erro", 
-                                "Erro ao alterar o status da despesa: " + 
-                                resultadoSalvar.getMensagem());
+                    exibirErro("Erro", "Erro ao alterar o status da despesa: " + 
+                              resultadoSalvar.getMensagem());
                 }
             }
         }
-    }
-    
-    /**
-     * Exibe um alerta.
-     */
-    private void exibirAlerta(Alert.AlertType tipo, String titulo, String mensagem) {
-        Alert alerta = new Alert(tipo);
-        alerta.setTitle(titulo);
-        alerta.setHeaderText(null);
-        alerta.setContentText(mensagem);
-        alerta.showAndWait();
     }
 }

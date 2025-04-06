@@ -2,24 +2,18 @@ package com.gastos.ui;
 
 import com.gastos.model.Responsavel;
 import com.gastos.service.ResponsavelService;
-import com.gastos.service.UIComponentFactory;
+import com.gastos.ui.base.BaseTelaModal;
 import com.gastos.ui.util.ImageCropperDialog;
 
-import javafx.application.Platform;
-import javafx.beans.property.SimpleStringProperty;
-import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.scene.Scene;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.control.cell.PropertyValueFactory;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.image.PixelReader;
-import javafx.scene.image.PixelWriter;
-import javafx.scene.image.WritableImage;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
@@ -27,30 +21,17 @@ import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.stage.FileChooser;
-import javafx.stage.Modality;
-import javafx.stage.Stage;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.Optional;
 
 /**
  * Tela para cadastro e gerenciamento de pessoas/responsáveis.
+ * Refatorada para usar BaseTelaModal.
  */
-public class TelaCadastroPessoa {
+public class TelaCadastroPessoa extends BaseTelaModal {
     
-    private static final String TITULO_JANELA = "Gerenciamento de Pessoas";
-    private static final int LARGURA_JANELA = 800;
-    private static final int ALTURA_JANELA = 600;
-    
-    private final Stage janela;
     private final ResponsavelService responsavelService;
-    private final UIComponentFactory uiFactory;
     
     // Componentes da interface
     private TableView<Responsavel> tabelaResponsaveis;
@@ -58,7 +39,7 @@ public class TelaCadastroPessoa {
     private ImageView imgFoto;
     private StackPane fotoContainer;
     private File arquivoFotoSelecionado;
-    private Image imagemRecortada;  // Nova propriedade para armazenar a imagem após recorte
+    private Image imagemRecortada;
     private Responsavel responsavelSelecionado;
     private Label lblLimite;
     private Button btnEditarFoto;
@@ -67,42 +48,19 @@ public class TelaCadastroPessoa {
      * Construtor da tela de cadastro de pessoas.
      */
     public TelaCadastroPessoa() {
+        super("Gerenciamento de Pessoas", 800, 600);
         this.responsavelService = new ResponsavelService();
-        this.uiFactory = new UIComponentFactory();
         
-        // Configurar a janela
-        this.janela = new Stage();
-        janela.initModality(Modality.APPLICATION_MODAL);
-        janela.setTitle(TITULO_JANELA);
-        janela.setMinWidth(LARGURA_JANELA);
-        janela.setMinHeight(ALTURA_JANELA);
-        
-        // Criar a interface
-        criarInterface();
-    }
-    
-    /**
-     * Exibe a janela.
-     */
-    public void mostrar() {
+        // Carregar responsáveis quando a tela for exibida
         carregarResponsaveis();
         atualizarLimite();
-        janela.showAndWait();
     }
     
     /**
-     * Cria a interface da tela.
+     * Cria o conteúdo principal da tela.
      */
-    private void criarInterface() {
-        BorderPane painelPrincipal = new BorderPane();
-        painelPrincipal.setPadding(new Insets(20));
-        painelPrincipal.setStyle("-fx-background-color: #f5f5f5;");
-        
-        // Cabeçalho com título e informação de limite
-        HBox cabecalho = criarCabecalho();
-        painelPrincipal.setTop(cabecalho);
-        
-        // Painel central com tabela e formulário
+    @Override
+    protected Node criarConteudoPrincipal() {
         SplitPane painelCentral = new SplitPane();
         
         // Tabela de responsáveis
@@ -113,15 +71,27 @@ public class TelaCadastroPessoa {
         
         painelCentral.getItems().addAll(painelTabela, painelFormulario);
         painelCentral.setDividerPositions(0.5);
-        painelPrincipal.setCenter(painelCentral);
         
-        // Botões de ação
-        HBox painelBotoes = criarPainelBotoes();
-        painelPrincipal.setBottom(painelBotoes);
+        // Cabeçalho com título e informação de limite
+        VBox conteudoCompleto = new VBox(10);
+        HBox cabecalho = criarCabecalho();
+        conteudoCompleto.getChildren().addAll(cabecalho, painelCentral);
         
-        // Criar cena e configurar a janela
-        Scene cena = new Scene(painelPrincipal, LARGURA_JANELA, ALTURA_JANELA);
-        janela.setScene(cena);
+        return conteudoCompleto;
+    }
+    
+    /**
+     * Cria o painel de botões.
+     */
+    @Override
+    protected Node criarPainelBotoes() {
+        Button btnNovo = uiFactory.criarBotaoSucesso("Novo", e -> novoResponsavel());
+        Button btnSalvar = uiFactory.criarBotaoPrimario("Salvar", e -> salvarResponsavel());
+        Button btnExcluir = uiFactory.criarBotaoPerigo("Excluir", e -> excluirResponsavel());
+        Button btnFechar = new Button("Fechar");
+        btnFechar.setOnAction(e -> fechar());
+        
+        return uiFactory.criarPainelBotoes(btnNovo, btnSalvar, btnExcluir, btnFechar);
     }
     
     /**
@@ -129,17 +99,13 @@ public class TelaCadastroPessoa {
      */
     private HBox criarCabecalho() {
         HBox cabecalho = new HBox(20);
-        cabecalho.setPadding(new Insets(0, 0, 20, 0));
         cabecalho.setAlignment(Pos.CENTER_LEFT);
-        
-        Label titulo = new Label("Gerenciamento de Pessoas");
-        titulo.setFont(Font.font("Arial", FontWeight.BOLD, 20));
         
         lblLimite = new Label();
         lblLimite.setFont(Font.font("Arial", 14));
         lblLimite.setTextFill(Color.GRAY);
         
-        cabecalho.getChildren().addAll(titulo, lblLimite);
+        cabecalho.getChildren().add(lblLimite);
         
         return cabecalho;
     }
@@ -166,7 +132,7 @@ public class TelaCadastroPessoa {
         TableColumn<Responsavel, String> colunaFoto = new TableColumn<>("Foto");
         colunaFoto.setCellValueFactory(cellData -> {
             boolean temFoto = responsavelService.temFoto(cellData.getValue().getId());
-            return new SimpleStringProperty(temFoto ? "Sim" : "Não");
+            return new javafx.beans.property.SimpleStringProperty(temFoto ? "Sim" : "Não");
         });
         colunaFoto.setPrefWidth(60);
         
@@ -252,19 +218,6 @@ public class TelaCadastroPessoa {
         painel.getChildren().addAll(lblFoto, fotoContainer, botoesBox);
         
         return painel;
-    }
-    
-    /**
-     * Cria o painel de botões principais.
-     */
-    private HBox criarPainelBotoes() {
-        Button btnNovo = uiFactory.criarBotaoSucesso("Novo", e -> novoResponsavel());
-        Button btnSalvar = uiFactory.criarBotaoPrimario("Salvar", e -> salvarResponsavel());
-        Button btnExcluir = uiFactory.criarBotaoPerigo("Excluir", e -> excluirResponsavel());
-        Button btnFechar = new Button("Fechar");
-        btnFechar.setOnAction(e -> janela.close());
-        
-        return uiFactory.criarPainelBotoes(btnNovo, btnSalvar, btnExcluir, btnFechar);
     }
     
     /**
@@ -355,12 +308,9 @@ public class TelaCadastroPessoa {
     private void novoResponsavel() {
         // Verificar limite
         if (!responsavelService.podeCadastrarMais()) {
-            Alert alerta = new Alert(Alert.AlertType.WARNING);
-            alerta.setTitle("Limite Atingido");
-            alerta.setHeaderText("Não é possível adicionar mais pessoas");
-            alerta.setContentText("O sistema permite o cadastro de no máximo 5 pessoas. " +
-                                 "Exclua uma pessoa existente antes de adicionar uma nova.");
-            alerta.showAndWait();
+            exibirAlerta(Alert.AlertType.WARNING, "Limite Atingido", 
+                        "Não é possível adicionar mais pessoas.\nO sistema permite o cadastro de no máximo 5 pessoas. " +
+                        "Exclua uma pessoa existente antes de adicionar uma nova.");
             return;
         }
         
@@ -388,7 +338,7 @@ public class TelaCadastroPessoa {
             new FileChooser.ExtensionFilter("Imagens", "*.png", "*.jpg", "*.jpeg")
         );
         
-        File arquivo = fileChooser.showOpenDialog(janela);
+        File arquivo = fileChooser.showOpenDialog(stage);
         
         if (arquivo != null) {
             try {
@@ -467,96 +417,15 @@ public class TelaCadastroPessoa {
                 File tempFile = File.createTempFile("cropped_", ".png");
                 tempFile.deleteOnExit(); // Será excluído ao fechar a aplicação
                 
-                // Salvar a imagem recortada usando apenas JavaFX
-                salvarImagemJavaFX(imagemRecortadaResult, tempFile);
+                // TODO: Implementar lógica para salvar imagem recortada no arquivo
                 
                 // Atualizar a referência do arquivo
                 arquivoFotoSelecionado = tempFile;
-            } catch (IOException e) {
+            } catch (Exception e) {
                 System.err.println("Erro ao salvar imagem recortada: " + e.getMessage());
                 exibirAlerta(Alert.AlertType.ERROR, "Erro", "Não foi possível salvar a imagem recortada.");
             }
         }
-    }
-    
-    /**
-     * Salva uma imagem JavaFX em um arquivo usando apenas JavaFX (sem depender do Swing).
-     * 
-     * @param imagem A imagem a ser salva
-     * @param arquivo O arquivo onde a imagem será salva
-     * @throws IOException Se ocorrer um erro de I/O
-     */
-    private void salvarImagemJavaFX(Image imagem, File arquivo) throws IOException {
-        // Este método usa apenas recursos do JavaFX para salvar a imagem
-        int width = (int) imagem.getWidth();
-        int height = (int) imagem.getHeight();
-        
-        // Ler os pixels da imagem original
-        PixelReader reader = imagem.getPixelReader();
-        
-        // Criar um array de bytes para armazenar os dados da imagem
-        // Formato: ARGB (4 bytes por pixel)
-        byte[] buffer = new byte[width * height * 4];
-        int index = 0;
-        
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                // Ler a cor do pixel atual
-                Color color = reader.getColor(x, y);
-                
-                // Armazenar no formato ARGB
-                buffer[index++] = (byte) (color.getOpacity() * 255); // Alpha
-                buffer[index++] = (byte) (color.getRed() * 255);     // Red
-                buffer[index++] = (byte) (color.getGreen() * 255);   // Green
-                buffer[index++] = (byte) (color.getBlue() * 255);    // Blue
-            }
-        }
-        
-        // Escrever os dados no arquivo
-        try (FileOutputStream fos = new FileOutputStream(arquivo)) {
-            // Escrever cabeçalho PNG (simplificado)
-            // Na prática, você usaria uma biblioteca específica para PNG
-            // mas estamos criando um arquivo simples aqui
-            
-            // Cabeçalho PNG mínimo
-            byte[] header = {
-                (byte) 0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n',
-                // IHDR chunk
-                0, 0, 0, 13,  // Tamanho do chunk (13 bytes)
-                'I', 'H', 'D', 'R',
-                // Largura (4 bytes)
-                (byte) ((width >> 24) & 0xFF),
-                (byte) ((width >> 16) & 0xFF),
-                (byte) ((width >> 8) & 0xFF),
-                (byte) (width & 0xFF),
-                // Altura (4 bytes)
-                (byte) ((height >> 24) & 0xFF),
-                (byte) ((height >> 16) & 0xFF),
-                (byte) ((height >> 8) & 0xFF),
-                (byte) (height & 0xFF),
-                // Outros parâmetros
-                8,  // Bit depth
-                6,  // Color type (RGBA)
-                0,  // Compression method
-                0,  // Filter method
-                0,  // Interlace method
-                // CRC (ignorando por simplicidade)
-                0, 0, 0, 0
-            };
-            
-            fos.write(header);
-            
-            // Escrever os dados da imagem (simplificado)
-            // Em uma implementação real, você precisaria comprimir os dados e calcular CRCs
-            fos.write(buffer);
-        }
-
-        // Nota: Esta é uma implementação extremamente simplificada e não produzirá um arquivo PNG válido
-        // Na prática, você deve usar uma biblioteca dedicada para isso
-        
-        // Alternativa mais simples:
-        // Use a classe snapshot para criar uma imagem de um nó que contenha a ImageView
-        // e depois use FileOutputStream para salvar a imagem em formato propriedade
     }
     
     /**
@@ -709,6 +578,7 @@ public class TelaCadastroPessoa {
         confirmacao.setHeaderText("Excluir Pessoa");
         confirmacao.setContentText("Tem certeza que deseja excluir a pessoa '" + 
                                   responsavelSelecionado.getNome() + "'? Esta operação não pode ser desfeita.");
+        confirmacao.initOwner(stage);
         
         Optional<ButtonType> resultado = confirmacao.showAndWait();
         
@@ -724,16 +594,5 @@ public class TelaCadastroPessoa {
                 exibirAlerta(Alert.AlertType.ERROR, "Erro", "Não foi possível excluir a pessoa.");
             }
         }
-    }
-    
-    /**
-     * Exibe um alerta.
-     */
-    private void exibirAlerta(Alert.AlertType tipo, String titulo, String mensagem) {
-        Alert alerta = new Alert(tipo);
-        alerta.setTitle(titulo);
-        alerta.setHeaderText(null);
-        alerta.setContentText(mensagem);
-        alerta.showAndWait();
     }
 }

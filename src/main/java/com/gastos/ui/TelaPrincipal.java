@@ -223,19 +223,22 @@ public class TelaPrincipal {
         VBox painelDashboard = new VBox(20);
         painelDashboard.setPadding(new Insets(20));
 
-        // Título, data e avatares em container horizontal
+        // Container para os avatares e informações de filtro
         HBox cabecalhoDashboard = new HBox();
         cabecalhoDashboard.setAlignment(Pos.CENTER_LEFT);
         cabecalhoDashboard.setSpacing(20);
         
-        // Container para título e filtro ativo
-        VBox tituloContainer = new VBox(5);
+        // Container para avatares - principal destaque
+        avatarContainer = new HBox(15);
+        avatarContainer.setAlignment(Pos.CENTER_LEFT);
+        avatarContainer.setPrefHeight(60);  // Aumentando um pouco a altura para dar mais destaque
+        avatarContainer.setStyle("-fx-padding: 5px 10px; -fx-background-color: #f8f9fa; -fx-background-radius: 10px;");
         
-        Label tituloDashboard = new Label("Dashboard");
-        tituloDashboard.setFont(Font.font("Arial", FontWeight.BOLD, 22));
+        // Inicializa o serviço de avatares
+        avatarService = new AvatarService(avatarContainer, this::selecionarResponsavel);
         
-        // Informações de filtro ativo
-        HBox filtroContainer = new HBox(10);
+        // Container para informações de filtro (à direita dos avatares)
+        VBox filtroContainer = new VBox(5);
         filtroContainer.setAlignment(Pos.CENTER_LEFT);
         
         lblFiltroAtivo = new Label("Mostrando despesas de: ");
@@ -247,17 +250,9 @@ public class TelaPrincipal {
         btnLimparFiltro.setVisible(false);
         
         filtroContainer.getChildren().addAll(lblFiltroAtivo, btnLimparFiltro);
-        tituloContainer.getChildren().addAll(tituloDashboard, filtroContainer);
         
-        // Container para avatares
-        avatarContainer = new HBox(15);
-        avatarContainer.setAlignment(Pos.CENTER_LEFT);
-        
-        // Inicializa o serviço de avatares
-        avatarService = new AvatarService(avatarContainer, this::selecionarResponsavel);
-        
-        // Adicionar componentes ao cabeçalho do dashboard
-        cabecalhoDashboard.getChildren().addAll(tituloContainer, avatarContainer);
+        // Adicionar os containers ao cabeçalho
+        cabecalhoDashboard.getChildren().addAll(avatarContainer, filtroContainer);
         
         // Container para data atual
         Label dataAtual = new Label("Data: " + LocalDate.now().format(DateTimeFormatter.ofPattern("dd/MM/yyyy")));
@@ -268,7 +263,7 @@ public class TelaPrincipal {
         HBox painelDespesasGraficos = criarPainelDespesasGraficos();
 
         painelDashboard.getChildren().addAll(
-            cabecalhoDashboard, 
+            cabecalhoDashboard,
             dataAtual,
             painelResumo, 
             painelDespesasGraficos
